@@ -1,0 +1,22 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data, generated indexes and reports
+data/raw/*
+!data/raw/.gitkeep
+data/index/*
+!data/index/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
