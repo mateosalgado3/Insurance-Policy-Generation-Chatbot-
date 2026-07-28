@@ -1,88 +1,151 @@
-# Arquitectura esencial
+# Arquitectura del chatbot de pólizas
 
-## Decisión de diseño
+## Alcance y términos
 
-El sistema separa dos rutas: una ingestión offline, determinista y repetible; y una consulta online de baja latencia. Haystack compone la extracción, segmentación, embeddings y recuperación RAG. LangChain se limita al agente que decide entre consultar pólizas, buscar noticias o rechazar una pregunta fuera de alcance. FastAPI expone el contrato HTTP y Chainlit consume ese mismo contrato para evitar duplicar la lógica de negocio.
+El sistema tiene solo dos flujos principales:
+
+1. **Preparación del índice (offline/batch):** se ejecuta cuando cambian los PDFs.
+2. **Consulta (online/request):** se ejecuta cada vez que el usuario hace una pregunta.
+
+Aquí **offline no significa “sin Internet”**. Significa un proceso previo y no interactivo.
+El prototipo principal usará la API de OpenAI; el embedder local de hashing se conservará
+únicamente como baseline de recuperación.
+
+## Diagrama esencial
 
 ```mermaid
 flowchart LR
-    subgraph Offline["Ingestión offline"]
-        S3["S3: PDFs de pólizas"] --> DL["Descarga idempotente"]
-        DL --> QA["EDA + validación"]
-        QA -->|"PDF textual"| EXT["Extracción con metadatos"]
-        QA -->|"PDF escaneado"| OCR["OCR"]
-        OCR --> EXT
-        EXT --> CHUNK["Chunking por artículo + solapamiento"]
-        CHUNK --> EMB["OpenAI embeddings"]
-        EMB --> VDB[("Qdrant\ntexto + vector + fuente")]
+    subgraph preparation["A. Preparación del índice"]
+        s3["S3: 9 pólizas PDF"] --> audit["EDA y perfilado"]
+        audit --> chunks["Chunks por artículo"]
+        chunks --> embeddings["Proveedor de embeddings"]
+        embeddings --> vectorIndex[("Qdrant: vectores y fuentes")]
     end
 
-    subgraph Online["Consulta online"]
-        USER["Usuario"] --> UI["Chainlit"]
-        UI --> API["FastAPI /ask"]
-        API --> ROUTER{"LangChain router"}
-        ROUTER -->|"Pólizas"| RAG["Haystack retrieval + reranking"]
-        RAG --> VDB
-        VDB --> CTX["Contexto + citas"]
-        CTX --> LLM["OpenAI Responses API"]
-        ROUTER -->|"Noticias"| WEB["Búsqueda web con dominio/fecha"]
-        WEB --> LLM
-        ROUTER -->|"Fuera de alcance"| SAFE["Respuesta segura"]
-        LLM --> GUARD["Validación: citas, alcance, PII"]
-        SAFE --> API
-        GUARD --> API
-        API --> UI
+    subgraph query["B. Consulta del usuario"]
+        user["Usuario"] --> ui["Interfaz web"]
+        ui --> api["FastAPI /ask"]
+        api --> retrieval["Recuperar top-k"]
+        retrieval --> llm["OpenAI LLM"]
+        llm --> response["Respuesta con citas"]
     end
 
-    subgraph Optional["Generación opcional de póliza"]
-        REQ["Requisitos estructurados"] --> CLAUSES["Recuperar cláusulas compatibles"]
-        CLAUSES --> DRAFT["Borrador con trazabilidad"]
-        DRAFT --> HUMAN["Revisión humana obligatoria"]
-    end
-
-    VDB --> CLAUSES
-    OBS["Logs, trazas y evaluación"] -.-> DL
-    OBS -.-> API
+    vectorIndex --> retrieval
 ```
 
-## Responsabilidades y contratos
+## Qué ocurre en cada flujo
 
-| Componente | Responsabilidad | Contrato mínimo |
+### A. Preparación del índice
+
+```text
+PDF -> validación -> artículos -> chunks -> embeddings -> Qdrant
+```
+
+- `eda.py` descarga y audita los documentos.
+- `profile_dataset.py` mide artículos, duplicados y tamaños candidatos.
+- El chunker conservará `policy_id`, archivo, artículo, página y hash.
+- OpenAI será el proveedor principal de embeddings.
+- El hashing local servirá para comparar una línea base sin costo de API.
+- Qdrant almacenará el vector, el texto y la fuente de cada chunk.
+
+Esta ruta debe ser idempotente: un PDF sin cambios no se vuelve a indexar.
+
+### B. Consulta
+
+```text
+Pregunta -> /ask -> embedding -> Qdrant -> top-k -> LLM -> respuesta citada
+```
+
+1. La interfaz envía una pregunta a `POST /ask`.
+2. El backend genera el embedding de la pregunta.
+3. Qdrant devuelve los chunks más relevantes.
+4. El LLM recibe solo la pregunta y los chunks recuperados.
+5. La API devuelve respuesta, fuentes y metadatos.
+6. Si no hay evidencia suficiente, el sistema se abstiene.
+
+## Contrato que no debe romperse
+
+La UI, el retrieval y el modelo pueden desarrollarse en paralelo mientras `/ask` conserve:
+
+```json
+{
+  "answer": "Respuesta fundamentada",
+  "sources": ["POL320190074.pdf - Artículo 12 - Página 20"],
+  "metadata": {
+    "model": "modelo activo",
+    "embedding_model": "embedder activo",
+    "response_time_ms": 125.4
+  }
+}
+```
+
+## Estado real con evidencia
+
+| Componente | Estado | Evidencia |
 |---|---|---|
-| Descarga/EDA | Inventariar y auditar la fuente sin modificarla | hashes, métricas, errores y reportes reproducibles |
-| Preprocesamiento Haystack | Extraer, limpiar y segmentar preservando estructura | `policy_id`, archivo, página, artículo, hash y versión |
-| Qdrant | Persistir vectores y metadatos filtrables | colección versionada por modelo y estrategia de chunking |
-| Recuperación | Búsqueda híbrida, filtros y reranking | top-k con puntajes y fuentes; nunca texto sin procedencia |
-| Router LangChain | Elegir una herramienta permitida | `policies`, `news` o `out_of_scope` con salida estructurada |
-| Generación | Responder solo con evidencia suficiente | afirmaciones enlazadas a citas; abstención si falta evidencia |
-| FastAPI/Chainlit | API estable y experiencia conversacional | sesión, streaming, fuentes, errores y feedback |
+| Descarga S3 y EDA | Hecho | `src/insurance_chatbot/eda.py` |
+| Perfilado y split | Hecho | `scripts/profile_dataset.py` y 3 tests |
+| Contratos `/ask` y `/config` | Parcial | `app.py` y `schemas.py`; `/ask` aún responde datos simulados |
+| Embedder local de hashing | En rama | `feature/david-online-retrieval`; todavía no está en `main` |
+| Chunker que produzca chunks | Pendiente | solo existe la propuesta estadística |
+| Qdrant e indexación | Pendiente | no existe implementación |
+| Retrieval real | Pendiente | no está conectado a `/ask` |
+| OpenAI embeddings y LLM | Pendiente | variables definidas, integración inexistente |
+| Interfaz web | Pendiente | no existe código frontend |
+| Noticias de Internet | Fase posterior | fuera del camino crítico del MVP |
+| Generación de pólizas | Opcional | implementar después del RAG consultivo |
 
-## Estrategia de chunking
+## Decisión de chunking basada en el corpus real
 
-La unidad primaria será el artículo o cláusula, no una ventana arbitraria. Los artículos extensos se subdividen por párrafo con solapamiento moderado; títulos y definiciones se propagan como contexto. Cada chunk conserva `policy_id`, página inicial/final, artículo, título, hash del documento y versión de ingestión. Antes de adoptar esta estrategia se compara con chunks fijos mediante Recall@k, MRR y nDCG sobre preguntas revisadas manualmente.
+El perfilado de los 9 PDFs produjo:
 
-## Robustez y seguridad
+- 267 páginas y 81.698 palabras.
+- 241 artículos detectados.
+- 0 PDFs escaneados y 0 errores de extracción.
+- 1 par casi duplicado, que debe permanecer en el mismo split.
+- Split propuesto: 7 documentos de desarrollo y 2 de evaluación.
+- Longitud de artículos: p50 = 279, p75 = 651 y p90 = 1.335 tokens.
 
-- Secretos únicamente en variables de entorno; `.env` está ignorado y `.env.example` no contiene valores.
-- Los PDFs originales son inmutables y cada etapa registra hashes para detectar cambios.
-- OCR, extracción y embeddings son reintentables e idempotentes; los fallos se aíslan en vez de desaparecer.
-- El texto recuperado se trata como datos no confiables frente a prompt injection.
-- La búsqueda web requiere fecha y URL; no se mezcla silenciosamente con contenido contractual.
-- Una respuesta sin evidencia suficiente se abstiene. El sistema no ofrece asesoría legal ni aprueba pólizas.
-- Todo borrador nuevo incluye la procedencia de sus cláusulas y exige revisión humana.
+Decisión inicial:
 
-## Evaluación antes del demo
+```text
+Unidad primaria: artículo
+Tamaño máximo: 1.024 tokens
+Solapamiento para artículos largos: 154 tokens (15 %)
+```
 
-1. Construir preguntas por póliza, comparación, exclusiones y preguntas imposibles.
-2. Medir recuperación (Recall@k, MRR, nDCG), fidelidad de citas y tasa de abstención correcta.
-3. Probar PDFs corruptos, escaneados, duplicados, consultas multilingües y prompt injection.
-4. Registrar latencia p50/p95, tokens y costo por pregunta.
-5. Bloquear el release si la respuesta inventa cobertura, confunde fuentes o expone PII.
+Un tamaño de 1.024 cubre el 87,55 % de los artículos completos. Por eso los artículos
+que superen ese límite se dividirán; no se asumirá que todos caben en un solo chunk.
+La decisión se validará con Recall@k y MRR antes de declararla definitiva.
 
-## Referencias técnicas
+## Decisiones mínimas para el MVP
 
-- [Haystack: componentes, pipelines, document stores, agents y tools](https://docs.haystack.deepset.ai/docs/intro)
-- [LangChain: agent harness, tools, middleware y salida estructurada](https://docs.langchain.com/oss/python/langchain/overview)
-- [OpenAI embeddings](https://developers.openai.com/api/docs/guides/embeddings)
-- [Chainlit overview](https://docs.chainlit.io/overview)
-- [Azure Search + OpenAI demo](https://github.com/Azure-Samples/azure-search-openai-demo)
+| Tema | Decisión |
+|---|---|
+| Backend | FastAPI |
+| Contrato principal | `POST /ask` |
+| Orquestación RAG | Haystack |
+| Embeddings principales | OpenAI API |
+| Baseline local | `LocalHashingEmbedder` |
+| Base vectorial | Qdrant local mediante Docker |
+| Generación | LLM mediante OpenAI API |
+| Frontend | Cliente web que consuma `/ask` |
+| Router LangChain | Agregar cuando exista la herramienta web; no es necesario para el primer RAG |
+
+## Plan de implementación
+
+1. **Indexación:** chunker, interfaz de embeddings, Qdrant y prueba de reindexación.
+2. **Retrieval:** top-k, filtros por póliza y evaluación con preguntas revisadas.
+3. **RAG real:** reemplazar la respuesta simulada de `/ask` por retrieval + OpenAI.
+4. **Frontend:** historial, fuentes, modo de carga y estado del backend.
+5. **Calidad:** citas obligatorias, abstención, latencia, costos y pruebas adversariales.
+6. **Extensiones:** noticias web y generación de borradores de pólizas.
+
+## Reglas de seguridad y calidad
+
+- Los secretos viven únicamente en `.env`.
+- Los PDFs y resultados generados no se versionan.
+- Ninguna afirmación contractual se responde sin una fuente recuperada.
+- El texto de los PDFs se trata como entrada no confiable.
+- Un borrador de póliza siempre requiere revisión humana.
+- No se integra una rama si rompe el contrato `/ask` o las pruebas.
