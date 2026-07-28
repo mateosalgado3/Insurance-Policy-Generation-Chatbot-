@@ -17,8 +17,12 @@ Asistente RAG para consultar pólizas de seguros, incorporar noticias relevantes
 ├── data/                   # raw/ e index/; contenido local ignorado por Git
 ├── docs/architecture.md    # diseño y diagrama Mermaid
 ├── outputs/                # artefactos generados; ignorados por Git
+├── scripts/
+│   └── profile_dataset.py  # split train/test, nulos/duplicados/longitudes y propuesta de chunking
 ├── src/insurance_chatbot/
 │   └── eda.py              # descarga + EDA ejecutable
+├── tests/
+│   └── test_profile_dataset.py
 ├── .env.example
 ├── Dockerfile
 ├── pyproject.toml
@@ -60,6 +64,34 @@ Los resultados quedan en `outputs/eda/`:
 - `top_terms.csv`: perfil léxico del corpus.
 - `summary.json`: métricas agregadas para automatización.
 - `eda_overview.png`: tablero visual de calidad y distribución.
+
+## Perfilado del dataset para chunking (train/test, nulos, duplicados, longitudes)
+
+`scripts/profile_dataset.py` reutiliza la auditoría de `insurance_chatbot.eda` (nulos,
+duplicados exactos/casi duplicados, longitudes) y agrega lo que ese módulo no cubre:
+
+- un split train/test a nivel documento, agrupando duplicados y casi-duplicados para que
+  no aparezcan en ambos lados del split (ver supuesto abajo),
+- la distribución de longitud por artículo/cláusula detectado, y
+- una grilla de chunks estimados por combinación de `chunk_size`/`chunk_overlap`, con una
+  propuesta final justificada por esa distribución.
+
+```powershell
+python scripts/profile_dataset.py
+# con overrides:
+python scripts/profile_dataset.py --test-ratio 0.2 --target-coverage 0.9 --overlap-ratio 0.15
+```
+
+Los resultados quedan en `outputs/profiling/`: `report.md`, `document_metrics.csv`,
+`article_lengths.csv`, `train_test_split.csv`, `chunk_estimates.csv`, `chunking_evidence.png`
+y `summary.json`.
+
+**Supuesto sobre "train/test":** este corpus son PDFs de pólizas, no un dataset etiquetado.
+Se asume que el split es a nivel documento para evaluación de recuperación más adelante
+(`train` = corpus indexado, `test` = holdout para construir preguntas de evaluación, ver
+"Evaluación antes del demo" en [docs/architecture.md](docs/architecture.md)). Este supuesto
+no estaba definido en el enunciado del proyecto; queda documentado en `report.md` para
+poder ajustarlo si el mentor tiene otro criterio en mente.
 
 ## Docker
 
