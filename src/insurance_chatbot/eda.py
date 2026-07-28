@@ -30,8 +30,12 @@ from sklearn.neighbors import NearestNeighbors
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_INPUT_DIR = PROJECT_ROOT / "data" / "raw"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "eda"
+DEFAULT_INPUT_DIR = Path(os.getenv("DATA_INPUT_DIR", PROJECT_ROOT / "data" / "raw"))
+DEFAULT_OUTPUT_DIR = Path(os.getenv("DATA_OUTPUT_DIR", PROJECT_ROOT / "outputs" / "eda")) 
+
+# DEFAULT_INPUT_DIR = PROJECT_ROOT / "data" / "raw"
+# DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "eda"
+
 WORD_RE = re.compile(r"[^\W\d_]+(?:[-'][^\W\d_]+)*", re.UNICODE)
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 ARTICLE_RE = re.compile(r"(?im)^\s*(?:art(?:í|i)culo|article)\s+(?:n[°ºo]\s*)?\d+[\w.-]*")
