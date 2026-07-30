@@ -10,12 +10,16 @@ readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "boto3>=1.35,<2",
+  "fastapi>=0.140.13",
   "matplotlib>=3.9,<4",
   "numpy>=2.0,<3",
+  "openai>=2.50.0",
   "pandas>=2.2,<3",
   "pypdf>=5,<7",
   "python-dotenv>=1.0,<2",
+  "qdrant-client>=1.18.0",
   "scikit-learn>=1.5,<2",
+  "uvicorn>=0.51.0",
 ]
 
 [project.optional-dependencies]
@@ -36,3 +40,8 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+]

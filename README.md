@@ -7,8 +7,10 @@ Asistente RAG para consultar pólizas de seguros, incorporar noticias relevantes
 - Repositorio y configuración segura creados.
 - Descarga desde S3 parametrizada por variables de entorno.
 - EDA reproducible para PDFs: extracción, calidad, duplicados, estructura legal, vocabulario y gráficos.
-- Arquitectura objetivo y límites de seguridad documentados.
-- Próxima fase: preprocesamiento/indexación, evaluación de recuperación, API y UI.
+- Perfilado real para split y chunking implementado y probado.
+- Contratos FastAPI `/ask` y `/config` creados; `/ask` todavía usa una respuesta simulada.
+- Arquitectura simplificada con estado y evidencia documentados.
+- Próxima fase: chunking, embeddings, Qdrant y retrieval real.
 
 ## Estructura mínima
 
@@ -20,6 +22,8 @@ Asistente RAG para consultar pólizas de seguros, incorporar noticias relevantes
 ├── scripts/
 │   └── profile_dataset.py  # split train/test, nulos/duplicados/longitudes y propuesta de chunking
 ├── src/insurance_chatbot/
+│   ├── app.py              # FastAPI; contrato creado, RAG aún simulado
+│   ├── schemas.py          # contratos de entrada/salida
 │   └── eda.py              # descarga + EDA ejecutable
 ├── tests/
 │   └── test_profile_dataset.py
@@ -92,6 +96,16 @@ Se asume que el split es a nivel documento para evaluación de recuperación má
 "Evaluación antes del demo" en [docs/architecture.md](docs/architecture.md)). Este supuesto
 no estaba definido en el enunciado del proyecto; queda documentado en `report.md` para
 poder ajustarlo si el mentor tiene otro criterio en mente.
+
+## API actual
+
+```powershell
+python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
+```
+
+Swagger queda disponible en `http://127.0.0.1:8000/docs`. Los contratos de `/ask` y
+`/config` están implementados, pero `/ask` aún devuelve una respuesta simulada hasta
+conectar chunking, embeddings, Qdrant, retrieval y OpenAI.
 
 ## Docker
 
