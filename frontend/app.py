@@ -29,12 +29,15 @@ DRAFT_COMMAND_PREFIX = "/draft"
 CONFIG_COMMAND = "/config"
 
 
-def _format_sources(sources: list[str]) -> list[cl.Text]:
-    """Build one Chainlit element per source so they render as separate cards."""
-    return [
-        cl.Text(name=f"Source {index}", content=source, display="inline")
+def _format_sources(sources: list[str]) -> str:
+    """Render sources inline so they do not depend on temporary file storage."""
+    if not sources:
+        return ""
+    items = "\n".join(
+        f"- **Fuente {index}:** {source}"
         for index, source in enumerate(sources, start=1)
-    ]
+    )
+    return f"\n\n### Fuentes consultadas\n\n{items}"
 
 
 def _parse_policy_command(text: str) -> str | None:
@@ -171,8 +174,10 @@ async def on_message(message: cl.Message) -> None:
             loading_message.content = f"Could not generate the draft: {exc}"
             await loading_message.update()
             return
-        loading_message.content = f"{result.draft}\n\n---\n{result.disclaimer}"
-        loading_message.elements = _format_sources(result.sources)
+        loading_message.content = (
+            f"{result.draft}\n\n---\n{result.disclaimer}"
+            f"{_format_sources(result.sources)}"
+        )
         await loading_message.update()
         return
 
@@ -208,6 +213,8 @@ async def on_message(message: cl.Message) -> None:
         return
 
     route = result.metadata.get("route", mode)
-    loading_message.content = f"{result.answer}\n\n---\nRoute: `{route}`"
-    loading_message.elements = _format_sources(result.sources)
+    loading_message.content = (
+        f"{result.answer}\n\n---\nRoute: `{route}`"
+        f"{_format_sources(result.sources)}"
+    )
     await loading_message.update()

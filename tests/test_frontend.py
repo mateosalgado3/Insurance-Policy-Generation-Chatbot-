@@ -5,7 +5,12 @@ from typing import Any
 import httpx
 
 from frontend import api_client
-from frontend.app import _parse_draft_command, _parse_mode_command, _parse_policy_command
+from frontend.app import (
+    _format_sources,
+    _parse_draft_command,
+    _parse_mode_command,
+    _parse_policy_command,
+)
 
 
 def _mock_async_client(monkeypatch, handler):
@@ -28,6 +33,17 @@ def test_command_parsers() -> None:
         "Combine coverage",
     )
     assert _parse_draft_command("normal question") is None
+
+
+def test_sources_render_inline_without_chainlit_file_elements() -> None:
+    rendered = _format_sources(
+        ["POL1.pdf - Página 4", "[Web] Regulator — https://example.com"]
+    )
+
+    assert "### Fuentes consultadas" in rendered
+    assert "**Fuente 1:** POL1.pdf - Página 4" in rendered
+    assert "**Fuente 2:** [Web] Regulator — https://example.com" in rendered
+    assert _format_sources([]) == ""
 
 
 def test_ask_client_sends_mode_and_policy(monkeypatch) -> None:
