@@ -6,7 +6,7 @@ evidencia y preparar la presentación.
 ## 1. Preflight
 
 ```powershell
-cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
+cd "C:...PROYECTO FINAL"
 git pull --ff-only origin main
 docker compose config
 docker compose up --build -d
