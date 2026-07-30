@@ -1,6 +1,13 @@
 from fastapi.testclient import TestClient
-import pytest
-from insurance_chatbot.app import app
+from insurance_chatbot.app import app, get_rag_service
+from insurance_chatbot.rag_service import FakeRAGService
+
+def override_get_rag_service() -> FakeRAGService:
+    """Usar el servicio simulado durante las pruebas de la API."""
+    return FakeRAGService()
+
+
+app.dependency_overrides[get_rag_service] = override_get_rag_service
 
 client = TestClient(app)
 
