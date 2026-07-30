@@ -1,7 +1,10 @@
 import os
-import time
 from fastapi import Depends, FastAPI, HTTPException, status
-from insurance_chatbot.rag_service import AbstractRAGService, FakeRAGService
+from insurance_chatbot.rag_service import (
+    AbstractRAGService,
+    RealRAGService,
+    RealRetrievalService,
+)
 from insurance_chatbot.schemas import AskRequest, AskResponse, ConfigResponse
 
 app = FastAPI(
@@ -10,7 +13,9 @@ app = FastAPI(
 )
 
 def get_rag_service() -> AbstractRAGService:
-    return FakeRAGService()
+    return RealRAGService(
+        retrieval_service=RealRetrievalService(),
+    )
 
 
 @app.post(
@@ -43,10 +48,10 @@ async def ask_question(
             detail="El servicio tardo en responder"
         )
 
-    except Exception as err:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno al procesar la solicitud en el motor RAG."
+            detail="Error interno al procesar la solicitud en el motor RAG."
         )
 
 @app.get(
