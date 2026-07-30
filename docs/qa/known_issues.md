@@ -29,3 +29,11 @@
 - Impact: medium
 - Status: confirm with the team
 - Notes: repository documentation, `/config`, and the current implementation appear partially misaligned. This task records the issue only and does not correct it.
+
+## Swagger Example Does Not Match The Actual `/health` Response
+
+- Description: Swagger UI displays `"string"` as the example value, while the endpoint actually returns a JSON object containing `status`, `service`, and `version`.
+- Impact: low
+- Severity: documentation only
+- Status: open
+- Notes: no functional impact. The endpoint behaves correctly; only the generated OpenAPI example appears inconsistent.
