@@ -30,6 +30,7 @@ dev = [
 
 [project.scripts]
 insurance-eda = "insurance_chatbot.eda:main"
+insurance-index = "insurance_chatbot.indexing:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_chatbot"]
