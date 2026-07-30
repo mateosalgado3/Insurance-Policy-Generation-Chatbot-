@@ -1,92 +1,92 @@
 # Arquitectura del chatbot de pólizas
 
-## Diagrama esencial
+## Flujo esencial
 
 ```mermaid
 flowchart LR
-    subgraph batch["A. Preparación del índice (batch)"]
-        s3["S3: pólizas PDF"] --> eda["EDA y perfilado"]
-        eda --> chunks["Chunks con página y artículo"]
-        chunks --> embedDocs["OpenAI Embeddings"]
-        embedDocs --> qdrant[("Qdrant local")]
+    subgraph batch["Preparación versionada"]
+        pdf["9 PDF"] --> eda["EDA y perfilado"]
+        eda --> chunks["262 chunks por artículo"]
+        chunks --> embedDocs["OpenAI embeddings"]
+        embedDocs --> qdrant[("Qdrant compartido")]
     end
 
-    subgraph request["B. Consulta del usuario"]
-        user["Usuario / frontend"] --> api["FastAPI POST /ask"]
+    subgraph request["Consulta"]
+        user["Usuario"] --> api["FastAPI /ask"]
         api --> embedQuery["Embedding de pregunta"]
-        embedQuery --> retrieve["Top-k + filtro policy_id"]
+        embedQuery --> retrieve["Top-k + policy_id"]
         qdrant --> retrieve
         retrieve --> llm["OpenAI Responses API"]
-        llm --> answer["Respuesta + fuentes + metadata"]
+        llm --> answer["Respuesta + fuentes"]
     end
+
+    questions["12 preguntas curadas"] --> evaluation["Recall@k y MRR"]
+    qdrant --> evaluation
 ```
 
-“Batch” significa preparación previa, no funcionamiento sin Internet. OpenAI
-participa tanto en la indexación (embeddings de documentos) como en cada
-consulta (embedding de pregunta y generación de respuesta).
+## Componentes
 
-## Responsabilidad de Carlos: API
+### Carlos — API
 
-- `POST /ask` conserva el contrato `answer`, `sources`, `metadata`.
-- `GET /config` muestra los modelos, Qdrant, colección, top-k y si la clave existe,
-  pero nunca expone el secreto.
-- `GET /health` es liveness: confirma que FastAPI responde.
-- `GET /ready` es readiness: exige clave configurada e índice no vacío.
-- El servicio RAG y los clientes se reutilizan; no se abren por petición.
-- Los errores de validación, índice, timeout, conexión y cuota se traducen a
-  códigos HTTP diferenciados sin filtrar mensajes sensibles.
+- Contrato estable `answer`, `sources`, `metadata`.
+- `/health` comprueba liveness y `/ready` dependencias reales.
+- `/config` no expone secretos.
+- Errores de validación, índice, conexión, cuota y timeout diferenciados.
 
-## Responsabilidad de David: indexación y RAG
+### David — RAG
+
+- Embeddings de pregunta con `text-embedding-3-small`.
+- Qdrant top-k con filtro opcional `policy_id`.
+- Generación fundamentada con `gpt-4.1-mini`.
+- Citas por archivo, página y artículo.
+- Abstención cuando no se recupera evidencia.
+
+### Javier — datos y evaluación
+
+- Chunking canónico por artículo con fallback por documento.
+- 262 IDs deterministas y payload validado.
+- Índice compartido con `embedding_model` e `index_version`.
+- Migración `metadata-only` con cero llamadas a OpenAI.
+- Dataset curado de 12 preguntas.
+- Evaluación local y evaluación real con Hit Rate@k, Recall@k y MRR.
+
+## Una sola fuente de verdad
+
+La implementación vive en `insurance_chatbot.indexing`. Los scripts
+`chunk_policies.py` e `index_chunks.py` son únicamente interfaces CLI
+compatibles; ya no mantienen algoritmos independientes.
+
+El índice se considera vigente cuando coinciden:
 
 ```text
-PDF -> extracción -> chunks -> embeddings -> Qdrant
-Pregunta -> embedding -> Qdrant top-k -> contexto -> LLM -> respuesta citada
+chunk_id + embedding_model + index_version
 ```
 
-- La indexación usa IDs deterministas, omite documentos cuyo hash, modelo y
-  versión de índice no cambiaron, y reemplaza los chunks anteriores solo
-  después de haber obtenido todos los embeddings nuevos.
-- Cada payload conserva texto, `policy_id`, archivo, página, artículo, hash y
-  `chunk_id`.
-- El retrieval permite filtrar por `policy_id` y configurar un umbral de score.
-- Si Qdrant no existe o está vacío, se devuelve un error operativo explícito.
-- Si no se recuperan chunks sobre el umbral, el RAG se abstiene y no llama al LLM.
-- El prompt obliga a responder únicamente desde el contexto y citar `[Fuente N]`.
+Versión actual:
 
-## Configuración
+```text
+article-v1-1024-154
+```
 
-| Variable | Uso | Valor por defecto |
-|---|---|---|
-| `OPENAI_API_KEY` | Autenticación server-side | requerida |
-| `OPENAI_CHAT_MODEL` | Generación | `gpt-4.1-mini` |
-| `OPENAI_EMBEDDING_MODEL` | Embeddings | `text-embedding-3-small` |
-| `QDRANT_PATH` | Índice persistente | `data/index/qdrant` |
-| `QDRANT_COLLECTION` | Colección | `queplan_policies` |
-| `RAG_TOP_K` | Máximo de chunks | `5` |
-| `RAG_SCORE_THRESHOLD` | Score mínimo | vacío hasta evaluación |
-
-No se fija un umbral arbitrario: Javier debe proponerlo con métricas de
-retrieval. La implementación ya acepta la variable cuando exista esa evidencia.
+Si todo coincide, la reindexación reutiliza los vectores. Si algo cambia,
+primero obtiene todos los embeddings nuevos y después reemplaza la colección.
 
 ## Estado verificable
 
 | Componente | Estado | Evidencia |
 |---|---|---|
-| Descarga, EDA y perfilado | Hecho | `eda.py`, `profile_dataset.py` |
-| Contratos y manejo de errores API | Hecho | `app.py`, `schemas.py` |
-| Liveness/readiness/config | Hecho | `/health`, `/ready`, `/config` |
-| Chunking para indexación | Hecho | `indexing.py` |
-| Persistencia e idempotencia Qdrant | Hecho | `index_policies()` |
-| Retrieval y filtro por póliza | Hecho | `RealRetrievalService` |
-| Generación fundamentada | Hecho | `RealRAGService` |
-| Índice local poblado | Bloqueado por entorno | OpenAI respondió `insufficient_quota` |
-| Frontend | Fuera de este cambio | asignado a Nicolás |
-| Evaluación Recall@k/MRR | Fuera de este cambio | asignado a Javier |
+| EDA y perfilado | Hecho | `eda.py`, `profile_dataset.py` |
+| FastAPI | Hecho | `app.py`, `schemas.py` |
+| Chunking | Hecho | `indexing.py`, `chunk_policies.py` |
+| Qdrant compartido | Hecho | 262 puntos, dimensión 1536 |
+| Retrieval y RAG | Hecho | `rag_service.py` |
+| Evaluación | Hecho | `evaluate_retrieval.py`, `retrieval_questions.json` |
+| Frontend | Pendiente | responsabilidad de Nicolás |
 
-## Reglas de operación
+## Seguridad y operación
 
-- `.env`, PDFs, índices y resultados generados no se versionan.
-- No levantar dos procesos contra el mismo Qdrant embebido.
-- Reindexar después de cambiar PDFs o el modelo de embeddings.
-- Una respuesta contractual siempre debe conservar fuentes.
-- Los borradores de póliza requieren revisión humana.
+- `.env` nunca se versiona.
+- No se ejecutan dos procesos contra el mismo Qdrant embebido.
+- El snapshot Qdrant evita regenerar embeddings, pero contiene texto del corpus.
+- Mantener el repositorio privado hasta confirmar permiso de redistribución.
+- Las respuestas contractuales conservan fuentes y requieren revisión humana.

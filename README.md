@@ -1,20 +1,18 @@
 # Insurance Policy Generation Chatbot
 
-Asistente RAG para consultar las pólizas QuePlan con respuestas fundamentadas y
-fuentes citables. El MVP usa FastAPI, embeddings y generación de OpenAI, y un
-índice Qdrant persistente local.
+Asistente RAG para consultar las pólizas QuePlan con respuestas fundamentadas
+y fuentes citables. El MVP usa FastAPI, OpenAI y un índice Qdrant persistente.
 
 ## Estado
 
-- Descarga S3, EDA y perfilado de los 9 PDFs: implementados.
-- Contrato FastAPI `/ask`, configuración, liveness y readiness: implementados.
-- Extracción de chunks, embeddings, indexación idempotente y retrieval: implementados.
-- Generación fundamentada con OpenAI Responses API: implementada.
-- Frontend, noticias web y generación opcional de pólizas: fuera de este cambio.
+- Descarga S3, EDA y perfilado de 9 PDFs: implementados.
+- FastAPI `/ask`, `/config`, `/health` y `/ready`: implementados.
+- Chunking canónico por artículos, indexación versionada y retrieval: implementados.
+- Índice compartido: 262 chunks con `text-embedding-3-small`.
+- Evaluación: 12 preguntas curadas, Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
+- Frontend, noticias web y generación opcional de pólizas: siguientes fases.
 
 ## Instalación
-
-Requiere Python 3.12.
 
 ```powershell
 cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
@@ -25,43 +23,58 @@ pip install -e ".[dev]"
 Copy-Item .env.example .env  # solo si .env todavía no existe
 ```
 
-Los secretos viven únicamente en `.env`, que Git ignora. Para el RAG real se
-necesita `OPENAI_API_KEY` con cuota API disponible. Una suscripción de ChatGPT
-no incluye automáticamente saldo de API.
+Los secretos viven únicamente en `.env`, que Git ignora.
 
-## Descargar y analizar el dataset
+## Datos, EDA y chunking
 
 ```powershell
 python -m insurance_chatbot.eda --download
 python scripts/profile_dataset.py
+python scripts/chunk_policies.py
 ```
 
-El EDA se guarda en `outputs/eda/` y el perfilado en `outputs/profiling/`.
+El chunker no llama a OpenAI. Produce determinísticamente los 262 registros de
+`data/index/chunks.jsonl` usando 1.024 tokens estimados y overlap de 154.
 
-## Crear o actualizar el índice
+## Índice compartido sin volver a pagar embeddings
 
-Detén FastAPI antes de ejecutar este comando, porque Qdrant embebido permite un
-solo proceso sobre el directorio local:
+El repositorio incluye un snapshot Qdrant compatible con los 262 chunks. Para
+verificar y versionar su metadata sin llamadas a OpenAI:
+
+```powershell
+python -m insurance_chatbot.indexing --metadata-only
+```
+
+El comando normal también es idempotente:
 
 ```powershell
 python -m insurance_chatbot.indexing
 ```
 
-El proceso:
+Si `chunk_id`, modelo y versión coinciden, reutiliza los 262 vectores y realiza
+cero llamadas. Solo genera embeddings cuando el corpus o la versión cambia.
 
-1. extrae texto de los 9 PDFs;
-2. conserva `policy_id`, archivo, página, artículo y hash;
-3. aplica el tamaño decidido por el perfilado (1.024 tokens estimados y overlap 154);
-4. obtiene embeddings en lotes con OpenAI;
-5. omite documentos sin cambios y reemplaza de forma segura los que cambiaron.
+El snapshot contiene texto extraído de las pólizas. El repositorio debe
+mantenerse privado hasta confirmar los permisos de redistribución del dataset.
 
-Si se cambia a un embedding con otra dimensión:
+## Evaluación de retrieval
+
+Línea base local sin costo:
 
 ```powershell
-python -m insurance_chatbot.indexing --recreate
+python scripts/evaluate_retrieval.py --provider local --top-k 5
 ```
 
-## Levantar y comprobar la API
+Evaluación del índice OpenAI —una sola llamada batch para las preguntas:
+
+```powershell
+python scripts/evaluate_retrieval.py --provider openai --top-k 5
+```
+
+Los resultados se guardan en `outputs/evaluation/retrieval.json`. Consulta las
+decisiones y limitaciones en [docs/evaluation.md](docs/evaluation.md).
+
+## Levantar la API
 
 ```powershell
 python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
@@ -69,33 +82,15 @@ python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
 
 - Swagger: `http://127.0.0.1:8000/docs`
 - Liveness: `http://127.0.0.1:8000/health`
-- Readiness real: `http://127.0.0.1:8000/ready`
+- Readiness: `http://127.0.0.1:8000/ready`
 - Configuración pública: `http://127.0.0.1:8000/config`
-
-Ejemplo:
-
-```powershell
-$body = @{
-  question = "¿Qué coberturas hospitalarias contempla la póliza?"
-  policy_id = "POL320190074"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/ask" `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-`/health` confirma que FastAPI está vivo. `/ready` solo devuelve 200 cuando la
-clave está configurada y Qdrant contiene chunks; así el demo no aparenta estar
-listo si falta una dependencia.
 
 ## Calidad
 
 ```powershell
-python -m ruff check src tests
+$env:MPLBACKEND="Agg"
+python -m ruff check src scripts tests
 python -m pytest -q
 ```
 
-El diseño y el estado técnico están en [docs/architecture.md](docs/architecture.md).
+La arquitectura está en [docs/architecture.md](docs/architecture.md).

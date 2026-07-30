@@ -49,6 +49,10 @@ class FakeQdrant:
     def delete(self, **kwargs: object) -> None:
         self.deleted += 1
 
+    def delete_collection(self, collection_name: str) -> None:
+        self.deleted += 1
+        self.exists = False
+
     def upsert(self, *, points: list[object], **kwargs: object) -> None:
         self.upserted = points
         self.current_payload = points[0].payload
@@ -93,7 +97,7 @@ def test_indexing_creates_collection_and_replaces_document(tmp_path: Path, monke
             document_hash="hash",
         )
     ]
-    monkeypatch.setattr(indexing, "extract_policy_chunks", lambda path: chunks)
+    monkeypatch.setattr(indexing, "extract_policy_chunks", lambda path, **kwargs: chunks)
     qdrant = FakeQdrant()
     openai = FakeOpenAI()
 
@@ -106,8 +110,9 @@ def test_indexing_creates_collection_and_replaces_document(tmp_path: Path, monke
 
     assert summary.documents == 1
     assert summary.chunks == 1
-    assert qdrant.deleted == 1
+    assert qdrant.deleted == 0
     assert len(qdrant.upserted) == 1
+    first_run_calls = openai.embeddings.calls
 
     # A second run with the same PDF and index signature makes no API call.
     indexing.index_policies(
@@ -116,5 +121,5 @@ def test_indexing_creates_collection_and_replaces_document(tmp_path: Path, monke
         openai_client=openai,
         qdrant_client=qdrant,
     )
-    assert openai.embeddings.calls == 1
-    assert qdrant.deleted == 1
+    assert openai.embeddings.calls == first_run_calls
+    assert qdrant.deleted == 0

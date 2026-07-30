@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import index_chunks  # noqa: E402
@@ -34,7 +34,9 @@ class FakeSyncEmbeddingsAPI:
 
     def create(self, *, model: str, input: list[str]) -> SimpleNamespace:
         self.calls.append({"model": model, "input": input})
-        return SimpleNamespace(data=[SimpleNamespace(embedding=_fake_embed(text)) for text in input])
+        return SimpleNamespace(
+            data=[SimpleNamespace(embedding=_fake_embed(text)) for text in input]
+        )
 
 
 class FakeSyncOpenAIClient:
@@ -61,6 +63,8 @@ SAMPLE_CHUNKS = [
         "article": "Articulo 1",
         "page": 3,
         "document_hash": "hash-a",
+        "embedding_model": "text-embedding-test",
+        "index_version": "article-v1-1024-154",
     },
     {
         "chunk_id": "POLTEST-art2-001",
@@ -70,6 +74,8 @@ SAMPLE_CHUNKS = [
         "article": "Articulo 2",
         "page": 5,
         "document_hash": "hash-a",
+        "embedding_model": "text-embedding-test",
+        "index_version": "article-v1-1024-154",
     },
 ]
 
@@ -118,7 +124,12 @@ def test_index_chunks_upserts_points_with_full_payload() -> None:
         batch_size=1,
     )
 
-    assert result == {"chunks_indexed": 2, "batches": 2, "collection": "test_policies"}
+    assert result == {
+        "chunks_indexed": 2,
+        "chunks_reused": 0,
+        "batches": 2,
+        "collection": "test_policies",
+    }
 
     stored = qdrant_client.scroll(collection_name="test_policies", limit=10, with_payload=True)[0]
     assert len(stored) == 2
@@ -126,6 +137,68 @@ def test_index_chunks_upserts_points_with_full_payload() -> None:
         "POLTEST-art1-001",
         "POLTEST-art2-001",
     }
+
+
+def test_second_index_run_reuses_vectors_without_api_calls() -> None:
+    qdrant_client = QdrantClient(":memory:")
+    openai_client = FakeSyncOpenAIClient()
+
+    index_chunks.index_chunks(
+        SAMPLE_CHUNKS,
+        openai_client=openai_client,
+        qdrant_client=qdrant_client,
+        embedding_model="text-embedding-test",
+        collection_name="test_policies",
+    )
+    calls_after_first_run = len(openai_client.embeddings.calls)
+    result = index_chunks.index_chunks(
+        SAMPLE_CHUNKS,
+        openai_client=openai_client,
+        qdrant_client=qdrant_client,
+        embedding_model="text-embedding-test",
+        collection_name="test_policies",
+    )
+
+    assert result["chunks_indexed"] == 0
+    assert result["chunks_reused"] == 2
+    assert len(openai_client.embeddings.calls) == calls_after_first_run
+
+
+def test_metadata_only_versions_existing_points_without_openai() -> None:
+    qdrant_client = QdrantClient(":memory:")
+    qdrant_client.create_collection(
+        collection_name="test_policies",
+        vectors_config=models.VectorParams(
+            size=1536,
+            distance=models.Distance.COSINE,
+        ),
+    )
+    qdrant_client.upsert(
+        collection_name="test_policies",
+        points=[
+            models.PointStruct(
+                id=index_chunks.point_id_for(chunk["chunk_id"]),
+                vector=[0.0] * 1536,
+                payload={
+                    key: value
+                    for key, value in chunk.items()
+                    if key not in {"embedding_model", "index_version"}
+                },
+            )
+            for chunk in SAMPLE_CHUNKS
+        ],
+    )
+
+    result = index_chunks.annotate_existing_index(
+        qdrant_client,
+        SAMPLE_CHUNKS,
+        collection_name="test_policies",
+        embedding_model="text-embedding-3-small",
+    )
+    points, _ = qdrant_client.scroll(collection_name="test_policies", limit=10, with_payload=True)
+
+    assert result["openai_calls"] == 0
+    assert all(point.payload["index_version"] == "article-v1-1024-154" for point in points)
 
 
 def test_indexed_chunks_are_retrievable_through_rag_service() -> None:
