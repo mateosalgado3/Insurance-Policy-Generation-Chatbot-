@@ -1,128 +1,136 @@
 # Insurance Policy Generation Chatbot
 
-Asistente RAG para consultar pólizas de seguros, incorporar noticias relevantes y, como capacidad opcional, proponer nuevas coberturas combinando cláusulas existentes. Las respuestas sobre pólizas deben estar fundamentadas en documentos recuperados y mostrar sus fuentes.
+Asistente agente para consultar pólizas QuePlan, combinar evidencia contractual
+con información web reciente y generar borradores trazables para revisión humana.
 
-## Estado actual
+## Estado técnico
 
-- Repositorio y configuración segura creados.
-- Descarga desde S3 parametrizada por variables de entorno.
-- EDA reproducible para PDFs: extracción, calidad, duplicados, estructura legal, vocabulario y gráficos.
-- Perfilado real para split y chunking implementado y probado.
-- Contratos FastAPI `/ask` y `/config` creados; `/ask` todavía usa una respuesta simulada.
-- Arquitectura simplificada con estado y evidencia documentados.
-- Próxima fase: chunking, embeddings, Qdrant y retrieval real.
+- 9 PDF auditados: 267 páginas, 81.698 palabras y 0 fallos de extracción.
+- 262 chunks deterministas indexados en Qdrant con `text-embedding-3-small`.
+- RAG de pólizas con `gpt-4.1-mini`, citas por archivo, página y artículo.
+- Agente LangChain con rutas `policies`, `web`, `combined` y fuera de alcance.
+- Web search mediante OpenAI Responses API y `gpt-5.6-luna`.
+- FastAPI con `/ask`, `/generate-policy`, `/config`, `/health` y `/ready`.
+- Frontend Chainlit con selector de ruta, filtro de póliza y generación de borradores.
+- API y frontend empaquetados con Docker Compose.
+- Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
 
-## Estructura mínima
+## Inicio rápido con Docker
 
-```text
-.
-├── data/                   # raw/ e index/; contenido local ignorado por Git
-├── docs/architecture.md    # diseño y diagrama Mermaid
-├── outputs/                # artefactos generados; ignorados por Git
-├── scripts/
-│   └── profile_dataset.py  # split train/test, nulos/duplicados/longitudes y propuesta de chunking
-├── src/insurance_chatbot/
-│   ├── app.py              # FastAPI; contrato creado, RAG aún simulado
-│   ├── schemas.py          # contratos de entrada/salida
-│   └── eda.py              # descarga + EDA ejecutable
-├── tests/
-│   └── test_profile_dataset.py
-├── .env.example
-├── Dockerfile
-├── pyproject.toml
-└── README.md
+Requisitos: Docker Desktop activo y un `.env` con `OPENAI_API_KEY`.
+
+```powershell
+cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
+docker compose up --build
 ```
+
+Abrir:
+
+- Chat: `http://127.0.0.1:8001`
+- Swagger: `http://127.0.0.1:8000/docs`
+- Readiness: `http://127.0.0.1:8000/ready`
+
+Detener:
+
+```powershell
+docker compose down
+```
+
+Compose lee `.env` para inyectar únicamente las variables necesarias. El archivo
+no se copia a las imágenes.
 
 ## Instalación local
 
-Se recomienda Python 3.12.
-
 ```powershell
+cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
 py -3.12 -m venv .venv
+uv sync --extra dev
+Copy-Item .env.example .env  # solo si .env todavía no existe
+```
+
+Terminal 1:
+
+```powershell
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-Copy-Item .env.example .env  # solo si todavía no existe
-```
-
-Completar `.env` con `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY`. El script usa además `S3_BUCKET` y `S3_PREFIX`; nunca recibe secretos como argumentos ni los imprime.
-
-## Descargar los datos y ejecutar el EDA
-
-```powershell
-# Prueba rápida sobre 10 documentos
-python -m insurance_chatbot.eda --download --limit 10
-
-# Corpus completo (los archivos ya descargados se omiten si su tamaño coincide)
-python -m insurance_chatbot.eda --download
-
-# Repetir el análisis sin volver a descargar
-python -m insurance_chatbot.eda
-```
-
-Los resultados quedan en `outputs/eda/`:
-
-- `report.md`: resumen ejecutivo y recomendaciones.
-- `document_metrics.csv`: métricas y banderas por PDF.
-- `near_duplicates.csv`: documentos con similitud coseno ≥ 0.90.
-- `top_terms.csv`: perfil léxico del corpus.
-- `summary.json`: métricas agregadas para automatización.
-- `eda_overview.png`: tablero visual de calidad y distribución.
-
-## Perfilado del dataset para chunking (train/test, nulos, duplicados, longitudes)
-
-`scripts/profile_dataset.py` reutiliza la auditoría de `insurance_chatbot.eda` (nulos,
-duplicados exactos/casi duplicados, longitudes) y agrega lo que ese módulo no cubre:
-
-- un split train/test a nivel documento, agrupando duplicados y casi-duplicados para que
-  no aparezcan en ambos lados del split (ver supuesto abajo),
-- la distribución de longitud por artículo/cláusula detectado, y
-- una grilla de chunks estimados por combinación de `chunk_size`/`chunk_overlap`, con una
-  propuesta final justificada por esa distribución.
-
-```powershell
-python scripts/profile_dataset.py
-# con overrides:
-python scripts/profile_dataset.py --test-ratio 0.2 --target-coverage 0.9 --overlap-ratio 0.15
-```
-
-Los resultados quedan en `outputs/profiling/`: `report.md`, `document_metrics.csv`,
-`article_lengths.csv`, `train_test_split.csv`, `chunk_estimates.csv`, `chunking_evidence.png`
-y `summary.json`.
-
-**Supuesto sobre "train/test":** este corpus son PDFs de pólizas, no un dataset etiquetado.
-Se asume que el split es a nivel documento para evaluación de recuperación más adelante
-(`train` = corpus indexado, `test` = holdout para construir preguntas de evaluación, ver
-"Evaluación antes del demo" en [docs/architecture.md](docs/architecture.md)). Este supuesto
-no estaba definido en el enunciado del proyecto; queda documentado en `report.md` para
-poder ajustarlo si el mentor tiene otro criterio en mente.
-
-## API actual
-
-```powershell
 python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
 ```
 
-Swagger queda disponible en `http://127.0.0.1:8000/docs`. Los contratos de `/ask` y
-`/config` están implementados, pero `/ask` aún devuelve una respuesta simulada hasta
-conectar chunking, embeddings, Qdrant, retrieval y OpenAI.
-
-## Docker
+Terminal 2:
 
 ```powershell
-docker build -t insurance-policy-eda .
-docker run --rm --env-file .env `
-  -v "${PWD}\data:/app/data" `
-  -v "${PWD}\outputs:/app/outputs" `
-  insurance-policy-eda --download
+.\.venv\Scripts\Activate.ps1
+python -m chainlit run frontend/app.py --headless --port 8001
 ```
 
-## Criterios de aceptación del EDA
+## Modos de consulta
 
-1. Todo PDF descargado aparece en `document_metrics.csv`, incluso si falla su extracción.
-2. Los PDFs escaneados o con cobertura de texto menor al 25 % quedan marcados para OCR.
-3. Los duplicados exactos se detectan por hash binario y por hash de texto normalizado.
-4. La similitud semántico-léxica solo genera candidatos; no se interpreta como equivalencia legal.
-5. Ninguna clave, texto de póliza o artefacto generado se versiona por defecto.
+`POST /ask` conserva el contrato estable:
 
-Consulta el diseño completo en [docs/architecture.md](docs/architecture.md).
+```json
+{
+  "answer": "respuesta",
+  "sources": ["fuente"],
+  "metadata": {"route": "policies"}
+}
+```
+
+El request acepta `mode`:
+
+- `auto`: el agente LangChain elige una herramienta.
+- `policies`: fuerza búsqueda en Qdrant y respuesta fundamentada.
+- `web`: fuerza OpenAI web search para información reciente.
+- `combined`: presenta evidencia contractual y web en secciones separadas.
+
+Comandos de Chainlit:
+
+```text
+/mode auto|policies|web|combined
+/policy POL320200071
+/policy clear
+/draft POL320200071,POL320150503 | Combine las cláusulas de cobertura
+/config
+```
+
+Los modos explícitos evitan la llamada del router y son útiles para una demo
+determinista. Web search y generación consumen OpenAI API.
+
+## Generación de borradores
+
+`POST /generate-policy` acepta instrucciones y entre una y tres pólizas fuente.
+Recupera evidencia desde Qdrant y produce un texto con citas. Todo resultado se
+marca como borrador y requiere revisión legal, actuarial y de cumplimiento.
+
+## Datos, EDA e índice
+
+```powershell
+python -m insurance_chatbot.eda --download
+python scripts/profile_dataset.py
+python scripts/chunk_policies.py
+python -m insurance_chatbot.indexing
+```
+
+El repositorio ya incluye `data/index/chunks.jsonl` y el snapshot Qdrant. Si
+`chunk_id`, modelo y versión coinciden, el indexador reutiliza los 262 vectores
+y realiza cero llamadas a OpenAI.
+
+El snapshot contiene texto extraído de pólizas. Mantener el repositorio privado
+hasta confirmar permisos de redistribución del dataset.
+
+## Evaluación y calidad
+
+```powershell
+$env:MPLBACKEND="Agg"
+python -m ruff check src scripts frontend tests
+python -m pytest -q
+python scripts/evaluate_retrieval.py --provider local --top-k 5
+```
+
+La evaluación OpenAI de las 12 preguntas curadas:
+
+```powershell
+python scripts/evaluate_retrieval.py --provider openai --top-k 5
+```
+
+Consulta [la arquitectura](docs/architecture.md), el
+[reporte de evaluación](docs/evaluation.md) y el
+[runbook de demo](docs/demo.md).

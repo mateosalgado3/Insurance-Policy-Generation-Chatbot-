@@ -1,0 +1,74 @@
+[
+  {
+    "id": "hospitalizacion_accidente",
+    "question": "¿Qué gastos de hospitalización cubre el seguro cuando ocurre un accidente?",
+    "policy_id": "POL120190177",
+    "relevant_chunk_ids": ["POL120190177-art2-001", "POL120190177-art2-002"]
+  },
+  {
+    "id": "cirugia_lasik",
+    "question": "¿Qué condiciones debe cumplir el asegurado para acceder a una cirugía ocular Lasik?",
+    "policy_id": "POL320130223",
+    "relevant_chunk_ids": ["POL320130223-art2-005"]
+  },
+  {
+    "id": "cirugia_ambulatoria",
+    "question": "¿Cómo define la póliza una cirugía ambulatoria?",
+    "policy_id": "POL320150503",
+    "relevant_chunk_ids": ["POL320150503-art2-002", "POL320150503-art2-003"]
+  },
+  {
+    "id": "monto_maximo",
+    "question": "¿Qué significa el monto máximo de gastos reembolsables?",
+    "policy_id": "POL320180100",
+    "relevant_chunk_ids": ["POL320180100-art4-003", "POL320180100-art4-004"]
+  },
+  {
+    "id": "exclusiones_embarazo",
+    "question": "¿Qué exclusiones se aplican a embarazo, parto, aborto o cesárea?",
+    "policy_id": "POL320190074",
+    "relevant_chunk_ids": ["POL320190074-art4-001", "POL320190074-art4-002"]
+  },
+  {
+    "id": "periodo_carencia",
+    "question": "¿Qué es el período de carencia y desde cuándo se cuenta?",
+    "policy_id": "POL320190074",
+    "relevant_chunk_ids": ["POL320190074-art5-001"]
+  },
+  {
+    "id": "seguro_catastrofico",
+    "question": "¿Cuál es la cobertura principal del seguro individual catastrófico por evento?",
+    "policy_id": "POL320200071",
+    "relevant_chunk_ids": ["POL320200071-doc-001", "POL320200071-doc-002"]
+  },
+  {
+    "id": "deducible_familiar",
+    "question": "¿Cómo se define el deducible familiar de la póliza?",
+    "policy_id": "POL320200214",
+    "relevant_chunk_ids": ["POL320200214-art3-002", "POL320200214-art3-003"]
+  },
+  {
+    "id": "complicaciones_recien_nacido",
+    "question": "¿Qué se considera una complicación del recién nacido durante el parto?",
+    "policy_id": "POL320200214",
+    "relevant_chunk_ids": ["POL320200214-art3-001", "POL320200214-art3-002"]
+  },
+  {
+    "id": "indemnizacion_covid",
+    "question": "¿Cuál es la indemnización por fallecimiento cuya causa básica sea COVID-19?",
+    "policy_id": "POL320210063",
+    "relevant_chunk_ids": ["POL320210063-doc-002"]
+  },
+  {
+    "id": "codigos_covid",
+    "question": "¿Qué códigos CIE-10 se utilizan para identificar COVID-19?",
+    "policy_id": "POL320210063",
+    "relevant_chunk_ids": ["POL320210063-doc-005"]
+  },
+  {
+    "id": "exclusiones_poliza_2021",
+    "question": "¿Cuáles son las exclusiones relacionadas con embarazo y parto?",
+    "policy_id": "POL320210210",
+    "relevant_chunk_ids": ["POL320210210-art4-001", "POL320210210-art4-002"]
+  }
+]

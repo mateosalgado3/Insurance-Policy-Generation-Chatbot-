@@ -1,0 +1,114 @@
+import asyncio
+import json
+from typing import Any
+
+import httpx
+
+from frontend import api_client
+from frontend.app import (
+    _format_sources,
+    _parse_draft_command,
+    _parse_mode_command,
+    _parse_policy_command,
+)
+
+
+def _mock_async_client(monkeypatch, handler):
+    real_client = httpx.AsyncClient
+    transport = httpx.MockTransport(handler)
+
+    def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(api_client.httpx, "AsyncClient", factory)
+
+
+def test_command_parsers() -> None:
+    assert _parse_policy_command("/policy POL123") == "POL123"
+    assert _parse_policy_command("/policy clear") == ""
+    assert _parse_mode_command("/mode COMBINED") == "combined"
+    assert _parse_draft_command("/draft POL1, POL2 | Combine coverage") == (
+        ["POL1", "POL2"],
+        "Combine coverage",
+    )
+    assert _parse_draft_command("normal question") is None
+
+
+def test_sources_render_inline_without_chainlit_file_elements() -> None:
+    rendered = _format_sources(
+        ["POL1.pdf - Página 4", "[Web] Regulator — https://example.com"]
+    )
+
+    assert "### Fuentes consultadas" in rendered
+    assert "**Fuente 1:** POL1.pdf - Página 4" in rendered
+    assert "**Fuente 2:** [Web] Regulator — https://example.com" in rendered
+    assert _format_sources([]) == ""
+
+
+def test_ask_client_sends_mode_and_policy(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "answer": "answer",
+                "sources": ["source"],
+                "metadata": {"route": "combined"},
+            },
+        )
+
+    _mock_async_client(monkeypatch, handler)
+    result = asyncio.run(api_client.ask_question("question", "POL1", "combined"))
+
+    assert captured == {
+        "question": "question",
+        "policy_id": "POL1",
+        "mode": "combined",
+    }
+    assert result.metadata["route"] == "combined"
+
+
+def test_readiness_parses_503_body(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={
+                "status": "not_ready",
+                "openai_configured": False,
+                "index_ready": True,
+                "collection": "policies",
+                "indexed_chunks": 262,
+                "detail": "OPENAI_API_KEY is not configured",
+            },
+        )
+
+    _mock_async_client(monkeypatch, handler)
+    result = asyncio.run(api_client.check_readiness())
+
+    assert result is not None
+    assert result.status == "not_ready"
+    assert result.indexed_chunks == 262
+
+
+def test_draft_client_parses_contract(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "draft": "BORRADOR",
+                "sources": ["POL1.pdf"],
+                "metadata": {"source_policy_ids": ["POL1"]},
+                "disclaimer": "Review required",
+            },
+        )
+
+    _mock_async_client(monkeypatch, handler)
+    result = asyncio.run(
+        api_client.generate_policy_draft("Create hospital coverage", ["POL1"])
+    )
+
+    assert result.draft == "BORRADOR"
+    assert result.disclaimer == "Review required"

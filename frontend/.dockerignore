@@ -1,0 +1,6 @@
+.env
+.venv
+.chainlit
+__pycache__
+*.py[cod]
+.gitignore

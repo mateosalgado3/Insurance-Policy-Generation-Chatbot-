@@ -1,0 +1,17 @@
+# Environment files with real credentials
+.env
+envFront
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Chainlit local state and cache
+.chainlit/
+.files/
+chainlit.db
+
+# Editor
+.vscode/

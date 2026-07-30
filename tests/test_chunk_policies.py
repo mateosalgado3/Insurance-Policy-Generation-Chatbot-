@@ -54,7 +54,15 @@ def test_run_chunking_end_to_end(synthetic_corpus: Path, tmp_path: Path) -> None
     # rather than a chunk full of empty text.
     assert all(record["policy_id"] != "POL0002" for record in records)
 
-    required_fields = {"chunk_id", "text", "policy_id", "filename", "article", "page", "document_hash"}
+    required_fields = {
+        "chunk_id",
+        "text",
+        "policy_id",
+        "filename",
+        "article",
+        "page",
+        "document_hash",
+    }
     for record in records:
         assert required_fields <= record.keys()
         assert record["text"].strip() == record["text"]
@@ -65,7 +73,9 @@ def test_run_chunking_end_to_end(synthetic_corpus: Path, tmp_path: Path) -> None
 
     # Article 2 ("cobertura extensa...") is long, so it must have split into
     # more than one chunk, and those chunks must be numbered sequentially.
-    article_2_ids = sorted(r["chunk_id"] for r in records if r["chunk_id"].startswith("POL0001-art2-"))
+    article_2_ids = sorted(
+        r["chunk_id"] for r in records if r["chunk_id"].startswith("POL0001-art2-")
+    )
     assert len(article_2_ids) > 1
     assert article_2_ids == [f"POL0001-art2-{i:03d}" for i in range(1, len(article_2_ids) + 1)]
 
