@@ -1,96 +1,136 @@
 # Insurance Policy Generation Chatbot
 
-Asistente RAG para consultar las pólizas QuePlan con respuestas fundamentadas
-y fuentes citables. El MVP usa FastAPI, OpenAI y un índice Qdrant persistente.
+Asistente agente para consultar pólizas QuePlan, combinar evidencia contractual
+con información web reciente y generar borradores trazables para revisión humana.
 
-## Estado
+## Estado técnico
 
-- Descarga S3, EDA y perfilado de 9 PDFs: implementados.
-- FastAPI `/ask`, `/config`, `/health` y `/ready`: implementados.
-- Chunking canónico por artículos, indexación versionada y retrieval: implementados.
-- Índice compartido: 262 chunks con `text-embedding-3-small`.
-- Evaluación: 12 preguntas curadas, Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
-- Frontend, noticias web y generación opcional de pólizas: siguientes fases.
+- 9 PDF auditados: 267 páginas, 81.698 palabras y 0 fallos de extracción.
+- 262 chunks deterministas indexados en Qdrant con `text-embedding-3-small`.
+- RAG de pólizas con `gpt-4.1-mini`, citas por archivo, página y artículo.
+- Agente LangChain con rutas `policies`, `web`, `combined` y fuera de alcance.
+- Web search mediante OpenAI Responses API y `gpt-5.6-luna`.
+- FastAPI con `/ask`, `/generate-policy`, `/config`, `/health` y `/ready`.
+- Frontend Chainlit con selector de ruta, filtro de póliza y generación de borradores.
+- API y frontend empaquetados con Docker Compose.
+- Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
 
-## Instalación
+## Inicio rápido con Docker
+
+Requisitos: Docker Desktop activo y un `.env` con `OPENAI_API_KEY`.
+
+```powershell
+cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
+docker compose up --build
+```
+
+Abrir:
+
+- Chat: `http://127.0.0.1:8001`
+- Swagger: `http://127.0.0.1:8000/docs`
+- Readiness: `http://127.0.0.1:8000/ready`
+
+Detener:
+
+```powershell
+docker compose down
+```
+
+Compose lee `.env` para inyectar únicamente las variables necesarias. El archivo
+no se copia a las imágenes.
+
+## Instalación local
 
 ```powershell
 cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
+uv sync --extra dev
 Copy-Item .env.example .env  # solo si .env todavía no existe
 ```
 
-Los secretos viven únicamente en `.env`, que Git ignora.
+Terminal 1:
 
-## Datos, EDA y chunking
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
+```
+
+Terminal 2:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m chainlit run frontend/app.py --headless --port 8001
+```
+
+## Modos de consulta
+
+`POST /ask` conserva el contrato estable:
+
+```json
+{
+  "answer": "respuesta",
+  "sources": ["fuente"],
+  "metadata": {"route": "policies"}
+}
+```
+
+El request acepta `mode`:
+
+- `auto`: el agente LangChain elige una herramienta.
+- `policies`: fuerza búsqueda en Qdrant y respuesta fundamentada.
+- `web`: fuerza OpenAI web search para información reciente.
+- `combined`: presenta evidencia contractual y web en secciones separadas.
+
+Comandos de Chainlit:
+
+```text
+/mode auto|policies|web|combined
+/policy POL320200071
+/policy clear
+/draft POL320200071,POL320150503 | Combine las cláusulas de cobertura
+/config
+```
+
+Los modos explícitos evitan la llamada del router y son útiles para una demo
+determinista. Web search y generación consumen OpenAI API.
+
+## Generación de borradores
+
+`POST /generate-policy` acepta instrucciones y entre una y tres pólizas fuente.
+Recupera evidencia desde Qdrant y produce un texto con citas. Todo resultado se
+marca como borrador y requiere revisión legal, actuarial y de cumplimiento.
+
+## Datos, EDA e índice
 
 ```powershell
 python -m insurance_chatbot.eda --download
 python scripts/profile_dataset.py
 python scripts/chunk_policies.py
-```
-
-El chunker no llama a OpenAI. Produce determinísticamente los 262 registros de
-`data/index/chunks.jsonl` usando 1.024 tokens estimados y overlap de 154.
-
-## Índice compartido sin volver a pagar embeddings
-
-El repositorio incluye un snapshot Qdrant compatible con los 262 chunks. Para
-verificar y versionar su metadata sin llamadas a OpenAI:
-
-```powershell
-python -m insurance_chatbot.indexing --metadata-only
-```
-
-El comando normal también es idempotente:
-
-```powershell
 python -m insurance_chatbot.indexing
 ```
 
-Si `chunk_id`, modelo y versión coinciden, reutiliza los 262 vectores y realiza
-cero llamadas. Solo genera embeddings cuando el corpus o la versión cambia.
+El repositorio ya incluye `data/index/chunks.jsonl` y el snapshot Qdrant. Si
+`chunk_id`, modelo y versión coinciden, el indexador reutiliza los 262 vectores
+y realiza cero llamadas a OpenAI.
 
-El snapshot contiene texto extraído de las pólizas. El repositorio debe
-mantenerse privado hasta confirmar los permisos de redistribución del dataset.
+El snapshot contiene texto extraído de pólizas. Mantener el repositorio privado
+hasta confirmar permisos de redistribución del dataset.
 
-## Evaluación de retrieval
-
-Línea base local sin costo:
+## Evaluación y calidad
 
 ```powershell
+$env:MPLBACKEND="Agg"
+python -m ruff check src scripts frontend tests
+python -m pytest -q
 python scripts/evaluate_retrieval.py --provider local --top-k 5
 ```
 
-Evaluación del índice OpenAI —una sola llamada batch para las preguntas:
+La evaluación OpenAI de las 12 preguntas curadas:
 
 ```powershell
 python scripts/evaluate_retrieval.py --provider openai --top-k 5
 ```
 
-Los resultados se guardan en `outputs/evaluation/retrieval.json`. Consulta las
-decisiones y limitaciones en [docs/evaluation.md](docs/evaluation.md).
-
-## Levantar la API
-
-```powershell
-python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
-```
-
-- Swagger: `http://127.0.0.1:8000/docs`
-- Liveness: `http://127.0.0.1:8000/health`
-- Readiness: `http://127.0.0.1:8000/ready`
-- Configuración pública: `http://127.0.0.1:8000/config`
-
-## Calidad
-
-```powershell
-$env:MPLBACKEND="Agg"
-python -m ruff check src scripts tests
-python -m pytest -q
-```
-
-La arquitectura está en [docs/architecture.md](docs/architecture.md).
+Consulta [la arquitectura](docs/architecture.md), el
+[reporte de evaluación](docs/evaluation.md) y el
+[runbook de demo](docs/demo.md).

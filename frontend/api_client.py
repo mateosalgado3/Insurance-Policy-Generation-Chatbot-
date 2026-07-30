@@ -12,10 +12,11 @@ from typing import Any
 
 import httpx
 
-from config import (
+from frontend.config import (
     ASK_ENDPOINT,
     ASK_TIMEOUT_SECONDS,
     CONFIG_ENDPOINT,
+    DRAFT_ENDPOINT,
     READY_ENDPOINT,
     STATUS_TIMEOUT_SECONDS,
 )
@@ -50,6 +51,14 @@ class AskResult:
 
 
 @dataclass(slots=True)
+class DraftResult:
+    draft: str
+    sources: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    disclaimer: str = ""
+
+
+@dataclass(slots=True)
 class ReadinessResult:
     """Mirrors the backend ReadinessResponse schema."""
 
@@ -66,12 +75,15 @@ class ConfigResult:
     """Mirrors the backend ConfigResponse schema."""
 
     llm_model: str
+    router_model: str
+    web_model: str
     embedding_model: str
     vector_store: str
     collection: str
     top_k: int
     score_threshold: float | None
     openai_configured: bool
+    available_modes: list[str] = field(default_factory=list)
 
 
 async def check_readiness() -> ReadinessResult | None:
@@ -117,22 +129,29 @@ async def fetch_config() -> ConfigResult | None:
     body = response.json()
     return ConfigResult(
         llm_model=body.get("llm_model", ""),
+        router_model=body.get("router_model", ""),
+        web_model=body.get("web_model", ""),
         embedding_model=body.get("embedding_model", ""),
         vector_store=body.get("vector_store", ""),
         collection=body.get("collection", ""),
         top_k=body.get("top_k", 0),
         score_threshold=body.get("score_threshold"),
         openai_configured=body.get("openai_configured", False),
+        available_modes=body.get("available_modes", []),
     )
 
 
-async def ask_question(question: str, policy_id: str | None) -> AskResult:
+async def ask_question(
+    question: str,
+    policy_id: str | None,
+    mode: str = "auto",
+) -> AskResult:
     """Send a question to the backend and return the parsed result.
 
     Raises ApiTimeoutError, ApiUnavailableError, or ApiResponseError on
     failure so the caller can present an appropriate message to the user.
     """
-    payload: dict[str, Any] = {"question": question}
+    payload: dict[str, Any] = {"question": question, "mode": mode}
     if policy_id:
         payload["policy_id"] = policy_id
 
@@ -158,4 +177,38 @@ async def ask_question(question: str, policy_id: str | None) -> AskResult:
         answer=body.get("answer", ""),
         sources=body.get("sources", []),
         metadata=body.get("metadata", {}),
+    )
+
+
+async def generate_policy_draft(
+    instructions: str,
+    source_policy_ids: list[str],
+) -> DraftResult:
+    """Generate a review-only draft from selected indexed policies."""
+    payload = {
+        "instructions": instructions,
+        "source_policy_ids": source_policy_ids,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=ASK_TIMEOUT_SECONDS) as client:
+            response = await client.post(DRAFT_ENDPOINT, json=payload)
+    except httpx.TimeoutException as exc:
+        raise ApiTimeoutError("The backend did not respond in time") from exc
+    except httpx.RequestError as exc:
+        raise ApiUnavailableError("The backend could not be reached") from exc
+
+    if response.status_code != 200:
+        detail = response.text
+        try:
+            detail = response.json().get("detail", detail)
+        except ValueError:
+            pass
+        raise ApiResponseError(response.status_code, detail)
+
+    body = response.json()
+    return DraftResult(
+        draft=body.get("draft", ""),
+        sources=body.get("sources", []),
+        metadata=body.get("metadata", {}),
+        disclaimer=body.get("disclaimer", ""),
     )

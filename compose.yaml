@@ -1,0 +1,36 @@
+name: insurance-policy-assistant
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set in .env}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4.1-mini}
+      OPENAI_ROUTER_MODEL: ${OPENAI_ROUTER_MODEL:-gpt-4.1-mini}
+      OPENAI_WEB_MODEL: ${OPENAI_WEB_MODEL:-gpt-5.6-luna}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      WEB_SEARCH_CONTEXT_SIZE: ${WEB_SEARCH_CONTEXT_SIZE:-medium}
+      QDRANT_PATH: /app/data/index/qdrant
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-queplan_policies}
+      RAG_TOP_K: ${RAG_TOP_K:-5}
+      RAG_SCORE_THRESHOLD: ${RAG_SCORE_THRESHOLD:-}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: http://api:8000
+      ASK_TIMEOUT_SECONDS: ${ASK_TIMEOUT_SECONDS:-90}
+      STATUS_TIMEOUT_SECONDS: ${STATUS_TIMEOUT_SECONDS:-5}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    restart: unless-stopped

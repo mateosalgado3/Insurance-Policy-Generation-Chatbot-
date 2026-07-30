@@ -14,6 +14,7 @@ load_dotenv()
 
 API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 ASK_ENDPOINT: str = f"{API_BASE_URL}/ask"
+DRAFT_ENDPOINT: str = f"{API_BASE_URL}/generate-policy"
 
 # /health only reports process liveness. /ready reports whether the RAG can
 # actually answer questions (OpenAI configured and index populated), so it

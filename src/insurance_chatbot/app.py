@@ -12,7 +12,10 @@ from qdrant_client import QdrantClient
 
 from insurance_chatbot.rag_service import (
     AbstractRAGService,
+    AgenticRAGService,
     IndexNotReadyError,
+    OpenAIWebSearchService,
+    PolicyDraftService,
     RealRAGService,
     RealRetrievalService,
 )
@@ -21,6 +24,8 @@ from insurance_chatbot.schemas import (
     AskResponse,
     ConfigResponse,
     HealthResponse,
+    PolicyDraftRequest,
+    PolicyDraftResponse,
     ReadinessResponse,
 )
 from insurance_chatbot.settings import Settings
@@ -35,16 +40,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await retrieval_service.openai_client.close()
         retrieval_service.qdrant_client.close()
     _build_rag_service.cache_clear()
+    _build_draft_service.cache_clear()
     get_retrieval_service.cache_clear()
     get_settings.cache_clear()
 
 
 app = FastAPI(
     title="Insurance Policy RAG API",
-    version="0.2.0",
+    version="0.3.0",
     description=(
-        "API de consulta sobre pólizas QuePlan. Las respuestas se generan "
-        "exclusivamente con evidencia recuperada del índice local."
+        "API agente para consultar pólizas QuePlan, buscar información actual "
+        "del sector y crear borradores trazables para revisión humana."
     ),
     lifespan=lifespan,
 )
@@ -70,15 +76,38 @@ def get_retrieval_service() -> RealRetrievalService:
 
 
 @lru_cache(maxsize=1)
-def _build_rag_service() -> RealRAGService:
+def _build_rag_service() -> AgenticRAGService:
     settings = get_settings()
     settings.require_openai()
     retrieval_service = get_retrieval_service()
-    return RealRAGService(
+    policy_service = RealRAGService(
         retrieval_service=retrieval_service,
         openai_client=retrieval_service.openai_client,
         chat_model=settings.chat_model,
         top_k=settings.top_k,
+    )
+    web_service = OpenAIWebSearchService(
+        openai_client=retrieval_service.openai_client,
+        web_model=settings.web_model,
+        search_context_size=settings.web_search_context_size,
+    )
+    return AgenticRAGService(
+        policy_service=policy_service,
+        web_service=web_service,
+        router_model=settings.router_model,
+        openai_api_key=settings.openai_api_key,
+    )
+
+
+@lru_cache(maxsize=1)
+def _build_draft_service() -> PolicyDraftService:
+    settings = get_settings()
+    settings.require_openai()
+    retrieval_service = get_retrieval_service()
+    return PolicyDraftService(
+        retrieval_service=retrieval_service,
+        openai_client=retrieval_service.openai_client,
+        chat_model=settings.chat_model,
     )
 
 
@@ -111,6 +140,7 @@ async def ask_question(
         return await rag_service.query(
             question=payload.question,
             policy_id=payload.policy_id,
+            mode=payload.mode,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -144,6 +174,54 @@ async def ask_question(
         ) from exc
 
 
+@app.post(
+    "/generate-policy",
+    response_model=PolicyDraftResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generar un borrador trazable de póliza",
+    description=(
+        "Recombina evidencia recuperada de una a tres pólizas. El resultado es "
+        "solo un borrador y exige revisión legal, actuarial y de cumplimiento."
+    ),
+)
+async def generate_policy_draft(payload: PolicyDraftRequest) -> PolicyDraftResponse:
+    try:
+        return await _build_draft_service().generate(
+            instructions=payload.instructions,
+            source_policy_ids=payload.source_policy_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Parámetros de generación no válidos: {exc}",
+        ) from exc
+    except IndexNotReadyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (TimeoutError, APITimeoutError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="El servicio externo tardó demasiado en responder.",
+        ) from exc
+    except RateLimitError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="OpenAI rechazó temporalmente la solicitud por límite de uso.",
+        ) from exc
+    except APIConnectionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No fue posible conectar con OpenAI.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al generar el borrador de póliza.",
+        ) from exc
+
+
 @app.get(
     "/config",
     response_model=ConfigResponse,
@@ -153,6 +231,8 @@ async def get_config() -> ConfigResponse:
     settings = get_settings()
     return ConfigResponse(
         llm_model=settings.chat_model,
+        router_model=settings.router_model,
+        web_model=settings.web_model,
         embedding_model=settings.embedding_model,
         vector_store="Qdrant (local persistent)",
         collection=settings.qdrant_collection,

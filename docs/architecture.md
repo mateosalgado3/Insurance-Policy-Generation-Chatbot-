@@ -1,92 +1,109 @@
-# Arquitectura del chatbot de pólizas
+# Arquitectura del asistente de pólizas
 
-## Flujo esencial
+## Vista completa
 
 ```mermaid
 flowchart LR
-    subgraph batch["Preparación versionada"]
-        pdf["9 PDF"] --> eda["EDA y perfilado"]
-        eda --> chunks["262 chunks por artículo"]
-        chunks --> embedDocs["OpenAI embeddings"]
-        embedDocs --> qdrant[("Qdrant compartido")]
+    subgraph offline["Preparación offline y versionada"]
+        s3["S3: 9 PDF"] --> eda["EDA y perfilado"]
+        eda --> chunks["262 chunks"]
+        chunks --> docEmb["Embeddings de documentos"]
+        docEmb --> qdrant[("Qdrant local")]
+        eval["12 preguntas de evaluación"] --> metrics["Hit Rate, Recall y MRR"]
+        qdrant --> metrics
     end
 
-    subgraph request["Consulta"]
-        user["Usuario"] --> api["FastAPI /ask"]
-        api --> embedQuery["Embedding de pregunta"]
-        embedQuery --> retrieve["Top-k + policy_id"]
-        qdrant --> retrieve
-        retrieve --> llm["OpenAI Responses API"]
-        llm --> answer["Respuesta + fuentes"]
+    subgraph runtime["Aplicación"]
+        user["Usuario"] --> ui["Chainlit :8001"]
+        ui --> api["FastAPI :8000"]
+        api --> agent{"Agente LangChain"}
+        agent -->|policies| queryEmb["Embedding de consulta"]
+        queryEmb --> qdrant
+        qdrant --> rag["RAG de pólizas"]
+        agent -->|web| web["OpenAI web search"]
+        agent -->|combined| rag
+        agent -->|combined| web
+        agent -->|fuera de alcance| decline["Respuesta acotada"]
+        rag --> response["Respuesta + fuentes + metadata"]
+        web --> response
+        decline --> response
+        api -->|/generate-policy| draft["Borrador trazable"]
+        qdrant --> draft
+        response --> ui
+        draft --> ui
     end
-
-    questions["12 preguntas curadas"] --> evaluation["Recall@k y MRR"]
-    qdrant --> evaluation
 ```
+
+## Decisiones esenciales
+
+1. **El corpus y el índice son locales.** Los documentos se procesan una vez; el
+   snapshot Qdrant evita regenerar embeddings.
+2. **La consulta no es completamente offline.** El índice es local, pero el
+   embedding de la pregunta y la generación usan OpenAI.
+3. **El router es un agente LangChain con herramientas de retorno directo.**
+   En `auto` elige una sola herramienta; los modos explícitos son deterministas.
+4. **Pólizas y web no se mezclan silenciosamente.** `combined` presenta dos
+   secciones para distinguir contrato de información reciente.
+5. **La web conserva sus URL.** Las fuentes se extraen de las anotaciones
+   `url_citation` y de las acciones de web search.
+6. **Los borradores no son documentos finales.** Solo recombinan evidencia y
+   siempre exigen revisión humana especializada.
 
 ## Componentes
 
-### Carlos — API
+| Componente | Responsabilidad | Implementación |
+|---|---|---|
+| EDA | calidad, duplicados, extracción y artículos | `eda.py`, `profile_dataset.py` |
+| Indexación | chunking, embeddings e índice versionado | `indexing.py` |
+| Retrieval | embedding de consulta, filtro y top-k | `RealRetrievalService` |
+| RAG | respuesta limitada al contexto y citas | `RealRAGService` |
+| Web | búsqueda reciente y URL citables | `OpenAIWebSearchService` |
+| Agente | selección de herramienta y fallback | `AgenticRAGService` |
+| Generación | borrador desde 1–3 pólizas | `PolicyDraftService` |
+| API | contratos, readiness y errores seguros | `app.py`, `schemas.py` |
+| UI | sesión, modos, fuentes y comandos | `frontend/` |
+| Operación | dos contenedores y healthchecks | `compose.yaml` |
 
-- Contrato estable `answer`, `sources`, `metadata`.
-- `/health` comprueba liveness y `/ready` dependencias reales.
-- `/config` no expone secretos.
-- Errores de validación, índice, conexión, cuota y timeout diferenciados.
+## Flujo de consulta
 
-### David — RAG
+1. Chainlit envía `question`, `policy_id` opcional y `mode`.
+2. En `auto`, el agente llama exactamente una herramienta.
+3. `policies` consulta Qdrant y genera solo con los chunks recuperados.
+4. `web` usa la herramienta alojada de OpenAI para información actual.
+5. `combined` ejecuta ambas rutas y conserva separadas sus evidencias.
+6. FastAPI devuelve `answer`, `sources` y `metadata`, incluyendo la ruta.
 
-- Embeddings de pregunta con `text-embedding-3-small`.
-- Qdrant top-k con filtro opcional `policy_id`.
-- Generación fundamentada con `gpt-4.1-mini`.
-- Citas por archivo, página y artículo.
-- Abstención cuando no se recupera evidencia.
+Si LangChain no puede enrutar por timeout o error transitorio, un fallback
+determinista selecciona la ruta mediante intención y vocabulario del dominio.
 
-### Javier — datos y evaluación
+## Indexación reproducible
 
-- Chunking canónico por artículo con fallback por documento.
-- 262 IDs deterministas y payload validado.
-- Índice compartido con `embedding_model` e `index_version`.
-- Migración `metadata-only` con cero llamadas a OpenAI.
-- Dataset curado de 12 preguntas.
-- Evaluación local y evaluación real con Hit Rate@k, Recall@k y MRR.
-
-## Una sola fuente de verdad
-
-La implementación vive en `insurance_chatbot.indexing`. Los scripts
-`chunk_policies.py` e `index_chunks.py` son únicamente interfaces CLI
-compatibles; ya no mantienen algoritmos independientes.
-
-El índice se considera vigente cuando coinciden:
+La versión actual es `article-v1-1024-154`. Un índice se reutiliza cuando
+coinciden:
 
 ```text
 chunk_id + embedding_model + index_version
 ```
 
-Versión actual:
+Por eso una ejecución normal sobre el snapshot devuelve 262 chunks reutilizados,
+0 chunks indexados y 0 batches de embeddings.
 
-```text
-article-v1-1024-154
-```
+## Despliegue
 
-Si todo coincide, la reindexación reutiliza los vectores. Si algo cambia,
-primero obtiene todos los embeddings nuevos y después reemplaza la colección.
+`compose.yaml` levanta:
 
-## Estado verificable
+- `api`: FastAPI, OpenAI, LangChain y Qdrant embebido.
+- `frontend`: Chainlit conectado internamente a `http://api:8000`.
 
-| Componente | Estado | Evidencia |
-|---|---|---|
-| EDA y perfilado | Hecho | `eda.py`, `profile_dataset.py` |
-| FastAPI | Hecho | `app.py`, `schemas.py` |
-| Chunking | Hecho | `indexing.py`, `chunk_policies.py` |
-| Qdrant compartido | Hecho | 262 puntos, dimensión 1536 |
-| Retrieval y RAG | Hecho | `rag_service.py` |
-| Evaluación | Hecho | `evaluate_retrieval.py`, `retrieval_questions.json` |
-| Frontend | Pendiente | responsabilidad de Nicolás |
+Solo `api` recibe `OPENAI_API_KEY`. `.dockerignore` impide copiar `.env`,
+datos crudos, caches o resultados locales a las imágenes.
 
-## Seguridad y operación
+## Seguridad y límites
 
-- `.env` nunca se versiona.
-- No se ejecutan dos procesos contra el mismo Qdrant embebido.
-- El snapshot Qdrant evita regenerar embeddings, pero contiene texto del corpus.
-- Mantener el repositorio privado hasta confirmar permiso de redistribución.
-- Las respuestas contractuales conservan fuentes y requieren revisión humana.
+- `.env` nunca se versiona ni se incluye en Docker.
+- Los errores 500 no exponen credenciales ni detalles internos.
+- Qdrant embebido admite una sola instancia sobre la misma carpeta.
+- Las respuestas contractuales muestran fuentes y no son asesoría legal.
+- Las noticias pueden cambiar; se conservan URL para verificación.
+- El repositorio debe seguir privado mientras el corpus no tenga permiso de
+  redistribución confirmado.

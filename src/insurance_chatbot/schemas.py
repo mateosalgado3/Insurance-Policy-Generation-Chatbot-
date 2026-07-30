@@ -1,8 +1,16 @@
 """Public API contracts."""
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+class QueryMode(StrEnum):
+    AUTO = "auto"
+    POLICIES = "policies"
+    WEB = "web"
+    COMBINED = "combined"
 
 
 class AskRequest(BaseModel):
@@ -17,6 +25,13 @@ class AskRequest(BaseModel):
         min_length=3,
         max_length=100,
         description="ID opcional de la póliza que limita la búsqueda.",
+    )
+    mode: QueryMode = Field(
+        default=QueryMode.AUTO,
+        description=(
+            "Ruta de consulta: auto usa el agente; policies consulta el índice; "
+            "web busca información reciente; combined usa ambas fuentes."
+        ),
     )
 
 
@@ -51,6 +66,8 @@ class AskResponse(BaseModel):
 
 class ConfigResponse(BaseModel):
     llm_model: str = Field(..., description="Modelo de lenguaje activo.")
+    router_model: str = Field(..., description="Modelo usado por el agente de enrutamiento.")
+    web_model: str = Field(..., description="Modelo con búsqueda web activa.")
     embedding_model: str = Field(..., description="Modelo de embeddings activo.")
     vector_store: str = Field(..., description="Base vectorial en uso.")
     collection: str = Field(..., description="Colección vectorial consultada.")
@@ -62,6 +79,35 @@ class ConfigResponse(BaseModel):
     openai_configured: bool = Field(
         ...,
         description="Indica si OPENAI_API_KEY está configurada.",
+    )
+    available_modes: list[QueryMode] = Field(
+        default_factory=lambda: list(QueryMode),
+        description="Rutas disponibles para POST /ask.",
+    )
+
+
+class PolicyDraftRequest(BaseModel):
+    instructions: str = Field(
+        ...,
+        min_length=10,
+        max_length=4000,
+        description="Objetivo y requisitos del borrador de póliza.",
+    )
+    source_policy_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=3,
+        description="Entre una y tres pólizas indexadas que servirán como evidencia.",
+    )
+
+
+class PolicyDraftResponse(BaseModel):
+    draft: str
+    sources: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    disclaimer: str = (
+        "Borrador generado para fines demostrativos. Requiere revisión legal, actuarial "
+        "y de cumplimiento antes de cualquier uso."
     )
 
 
