@@ -12,9 +12,11 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir .
 
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data/raw /app/outputs \
+    && mkdir -p /app/data/raw /app/data/index /app/outputs \
     && chown -R appuser:appuser /app
 
 USER appuser
 
-ENTRYPOINT ["python", "-m", "insurance_chatbot.eda"]
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "insurance_chatbot.app:app", "--host", "0.0.0.0", "--port", "8000"]
