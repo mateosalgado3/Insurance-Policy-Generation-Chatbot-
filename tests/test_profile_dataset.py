@@ -25,7 +25,7 @@ def _write_pdf(path: Path, articles: list[str]) -> None:
 
     lines: list[str] = []
     for index, body in enumerate(articles, start=1):
-        lines.append(f"Articulo {index} Titulo del articulo")
+        lines.append(f"Articulo {index}: Titulo del articulo")
         lines.extend(textwrap.wrap(body, width=90))
     text = "\n".join(lines)
 
