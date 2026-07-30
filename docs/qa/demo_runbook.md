@@ -40,6 +40,27 @@ http://127.0.0.1:8000/docs
 - `GET /config`
 - `POST /ask`
 
+## Candidate Demo Questions
+
+### Hospital Coverage
+
+```json
+{
+  "question": "¿Qué coberturas hospitalarias contempla la póliza?",
+  "policy_id": "POL320190074"
+}
+```
+
+Status: validated candidate.
+
+Notes:
+
+- This question produced a real HTTP 200 response from Swagger with retrieved sources and metadata.
+- Pages 20, 19, 1, and 18 support the answer.
+- Page 35 provides additional context through related definitions.
+- This question can remain a demo candidate.
+- It is not yet marked as a final demo question until the final demo question set is selected.
+
 ## Pending Demo Steps
 
 - Start the frontend: pending; no repository command exists yet.

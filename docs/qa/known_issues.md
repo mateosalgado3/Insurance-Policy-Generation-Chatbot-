@@ -37,3 +37,12 @@
 - Severity: documentation only
 - Status: open
 - Notes: no functional impact. The endpoint behaves correctly; only the generated OpenAPI example appears inconsistent.
+
+## Swagger Example For `/ask` Response Appears Outdated
+
+- Type: documentation/OpenAPI
+- Priority: low
+- Impact: does not affect API execution, but may confuse QA or demo preparation.
+- Status: open
+- Description: the Swagger response 200 example for `/ask` includes outdated values such as `sentence-transformers/all-MiniLM-L6-v2` and `health_policy_inventada.pdf`, while the real execution used `gpt-4.1-mini`, `text-embedding-3-small`, and `POL320190074.pdf`.
+- Notes: no code changes are proposed or applied in this task.
