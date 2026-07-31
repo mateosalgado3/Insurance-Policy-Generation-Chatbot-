@@ -6,28 +6,10 @@
 - Status: non-blocking
 - Notes: recorded during the test execution. No dependency or package changes are proposed in this task.
 
-## Initial Non-Reproducible Tcl/Tk Failure
-
-- Impact: low at this time
-- Status: monitor
-- Notes: an initial `test_run_profiling_end_to_end` execution failed with a Tcl/Tk error. The isolated test passed without code changes, and the later full suite passed without code changes.
-
-## Frontend Is Not Present
-
-- Impact: blocks end-to-end QA
-- Status: pending implementation
-- Notes: no frontend startup command or UI flow is currently available in the repository.
-
-## Qdrant And Indexing Procedure Is Not Versioned
-
-- Impact: blocks real `/ask` execution and reproducible demo
-- Status: pending implementation or documentation
-- Notes: no versioned Docker command for Qdrant and no indexing pipeline into `data/index/qdrant` are currently available.
-
 ## Possible Documentation And Runtime Misalignment
 
 - Impact: medium
-- Status: confirm with the team
+- Status: optional future documentation cleanup
 - Notes: repository documentation, `/config`, and the current implementation appear partially misaligned. This task records the issue only and does not correct it.
 
 ## Swagger Example Does Not Match The Actual `/health` Response
@@ -46,3 +28,21 @@
 - Status: open
 - Description: the Swagger response 200 example for `/ask` includes outdated values such as `sentence-transformers/all-MiniLM-L6-v2` and `health_policy_inventada.pdf`, while the real execution used `gpt-4.1-mini`, `text-embedding-3-small`, and `POL320190074.pdf`.
 - Notes: no code changes are proposed or applied in this task.
+
+## FE-WEB-001 - Specific Web Query Returns HTTP 500
+
+- Reproducibility: observed during manual Chainlit execution with `/mode web` and the exact question `What are the most relevant recent developments in Ecuador's insurance sector?`
+- Impact: limited to certain web queries or processed web results. This exact query is excluded from the recommended demo flow, but the issue does not block the completed QA package.
+- Status: documented; optional future investigation
+- Observed behavior: Chainlit displayed a controlled backend error message. Frontend logs showed `POST http://localhost:8000/ask` returning HTTP 500, and backend logs showed `POST /ask HTTP/1.1 500 Internal Server Error`.
+- Root cause: not determined within the completed QA scope.
+- Evidence narrowing scope: `FE-WEB-002` passed with the general web query `What is artificial intelligence?`; `FE-COMB-001` passed and used web retrieval successfully inside the `combined` flow.
+- Notes: no definitive cause is recorded. The `policies` route works, `/ready` returns 200, `/config` returns valid configuration, general web queries can execute successfully, and combined web retrieval can execute successfully.
+
+## UX Observation - Draft Citation Labels
+
+- Type: UX improvement
+- Impact: non-functional
+- Status: open
+- Observation: some internal citation labels, such as `[Fuente 3, q.vi]` and `[Fuente 3, u.]`, may not be meaningful for end users.
+- Notes: this is not classified as a functional defect. Draft generation completed successfully and cited policy sources.

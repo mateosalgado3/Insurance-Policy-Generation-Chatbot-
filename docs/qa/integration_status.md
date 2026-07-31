@@ -1,5 +1,19 @@
 # Integration Status
 
+## Overall QA Status
+
+| Area | Status |
+|---|---|
+| Backend API | Validated |
+| Chainlit Frontend | Validated |
+| Policy Retrieval | Validated |
+| Combined Mode | Validated |
+| Draft Generation | Validated |
+| Web Mode | Partially validated |
+| QA Evidence Package | Finalized |
+| Demo Runbook | Finalized |
+| Documented Functional Observations | `FE-WEB-001` |
+
 ## Available
 
 - FastAPI application.
@@ -39,6 +53,13 @@ This manual validation confirms index creation and readiness only. It does not y
 - Real policy sources were returned for `POL320190074.pdf`.
 - Real metadata was returned, including `model: "gpt-4.1-mini"`, `embedding_model: "text-embedding-3-small"`, `policy_id: "POL320190074"`, `retrieved_chunks: 5`, and `is_mock: false`.
 - The response included citations in the answer text.
+- Manual `/ask` validation cases `QA-API-005` through `QA-API-016` were executed from PowerShell against the Docker Compose API at `http://localhost:8000`.
+- Missing `question`, empty `question`, too-short `question`, numeric `question`, null `question`, numeric `policy_id`, array body, and string body returned HTTP 422 schema validation responses.
+- Whitespace-only `question` returned HTTP 400 service-level validation with `question must not be empty`.
+- `policy_id: null` was accepted by the schema and returned a normal answer.
+- Unknown extra fields were ignored by the current schema and returned a normal answer.
+- Malformed JSON for `/ask` returned HTTP 422 with `json_invalid` before endpoint logic.
+- Invalid `Content-Type: text/plain` for `/ask` returned HTTP 422 with `model_attributes_type` before endpoint execution.
 
 ## Manually Validated Grounding For First `/ask` Case
 
@@ -49,30 +70,99 @@ This manual validation confirms index creation and readiness only. It does not y
 - Page 35 was confirmed as additional context rather than direct support for every listed coverage.
 - The first complete end-to-end flow is manually validated: FastAPI to Qdrant to OpenAI to cited answer to PDF page review.
 
+## Manually Validated Frontend Smoke Test
+
+- Chainlit frontend is available.
+- Frontend to API connection was validated.
+- `policies` mode was validated from Chainlit.
+- `policy_id` filtering with `POL320190074` was validated from Chainlit.
+- A real response with retrieval was returned through the frontend.
+- Sources were rendered in the Chainlit interface.
+- The first frontend end-to-end smoke test was validated: Chainlit frontend -> FastAPI -> Qdrant -> OpenAI -> Chainlit frontend.
+- The response was not mock.
+- API-off frontend handling was validated with `FE-ERR-API-OFF-001`.
+- When FastAPI was stopped, Chainlit remained responsive and displayed a controlled backend-unavailable message.
+- No traceback, internal exception, or infinite loading was observed during API-off validation.
+- Policies-mode no-evidence behavior was validated with `FE-POL-NOEVIDENCE-001`; the assistant did not fabricate unsupported spacecraft-collision coverage and cited retrieved policy sections.
+- Automatic routing was validated with `FE-AUTO-001`; a general knowledge question in `auto` mode was routed to `web`.
+- Out-of-scope behavior was validated with `FE-OOS-001`; a creative poem request in `policies` mode was declined based on unsupported policy evidence and cited retrieved policy sources.
+- Frontend timeout handling was validated with `FE-TIMEOUT-001`; Chainlit displayed a controlled timeout message, stayed responsive, and did not expose a traceback or infinite loading state.
+
+## QA Evidence Package
+
+Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
+
+| Screenshot | Description |
+|---|---|
+| `01-policy-setup.png` | Policies mode selection and policy selection before querying |
+| `02-policy-response.png` | Successful policy answer with retrieved sources |
+| `03-no-evidence-setup.png` | No-evidence scenario setup |
+| `04-no-evidence-response.png` | No-evidence response showing insufficient evidence and retrieved sources |
+| `05-auto-route-web.png` | Automatic routing to the web route |
+| `06-out-of-scope.png` | Out-of-scope request handled without hallucination |
+| `07-api-unreachable.png` | Frontend behavior when the backend is unavailable |
+| `08-timeout.png` | Frontend timeout handling |
+| `09-health-endpoint.png` | Health endpoint verification |
+| `10-config-endpoint.png` | Configuration endpoint verification |
+
+## Frontend Web Flow Status
+
+- `FE-WEB-001` was executed from Chainlit.
+- The frontend web flow reached the backend and received HTTP 500.
+- The frontend displayed a controlled backend error message.
+- `FE-WEB-002` confirmed that a general web query can execute successfully.
+- `FE-COMB-001` confirmed that web retrieval can also execute successfully inside the `combined` flow.
+- Integration of the web route is partially validated.
+- The HTTP 500 observed in `FE-WEB-001` appears query-specific or result-specific, not a complete failure of web mode.
+- Root cause of the `FE-WEB-001` HTTP 500 was not investigated further within the completed QA scope.
+- The known `FE-WEB-001` query is excluded from the recommended live demo flow.
+
+## Manually Validated Combined Flow
+
+- `combined` mode was validated from Chainlit.
+- The response displayed route `combined`.
+- The response included separate `Evidencia de pólizas` and `Información web actual` blocks.
+- PDF sources were displayed.
+- Web sources with URLs were displayed.
+- Sources from `POL320190074.pdf` were retrieved.
+- Web sources included domains such as `supercias.gob.ec` and `undp.org`.
+- No HTTP 500 occurred in `FE-COMB-001`.
+
+## Manually Validated Draft Generation
+
+- Draft generation: Validated.
+- `/draft` command validation works.
+- Successful draft generation works.
+- Citation of policy sources works.
+- Responsible handling of missing information was observed.
+- The system did not invent missing limits, deductibles, or catastrophic coverage details; it left them for manual definition.
+
+## Direct API Validation
+
+- `/generate-policy` was tested directly from Swagger.
+- Successful responses were verified.
+- Input validations were verified.
+- Validation errors were returned with HTTP 422.
+- No HTTP 500 errors were observed during these `/generate-policy` tests.
+- `API-DRAFT-001` verified successful draft generation with sources, metadata, disclaimer, `model: "gpt-4.1-mini"`, `retrieved_chunks: 3`, and `is_mock: false`.
+- `API-DRAFT-002` verified `instructions` minimum length validation.
+- `API-DRAFT-003` verified malformed JSON rejection before endpoint logic.
+- `API-DRAFT-004` verified `source_policy_ids` minimum item validation.
+
 ## Current Service Behavior
 
-The normal application path uses `RealRAGService`.
+The normal application path uses real services. The `policies` route uses `RealRAGService` for policy retrieval and answer generation.
 
 `FakeRAGService` is used by tests through dependency overrides. It should not be treated as the normal runtime service, and this task does not suggest changing the application to use the fake service.
 
-## Pending Or Blocked
+## QA Scope Completion
 
-- Frontend.
-- UI to API flow.
-- Source visualization in the UI.
-- Frontend validation.
-- End-to-end manual validation.
-- Versioned command for starting Qdrant with Docker.
-- Additional manual `/ask` validation.
-- Manual verification of additional answers against cited pages.
-- Manual out-of-scope question validation.
-- Manual controlled failure validation.
-- Selection of final demo questions.
-- Real end-to-end demo.
+- All planned manual QA scenarios for the documented project scope were completed.
+- The QA evidence package is finalized in `docs/qa/screenshots/`.
+- The demo runbook is finalized in `docs/qa/demo_runbook.md`.
+- Recommended demo questions are documented and avoid the known `FE-WEB-001` query.
 
-## Detected Inconsistencies To Confirm
+## Optional Future Improvements
 
-- Current sources are returned as `list[str]`.
-- The architecture document mentions a more detailed source format with PDF, article, and page.
-
-These differences should be confirmed with the team. They are not corrected in this task.
+- Source-format alignment between API `list[str]` responses and richer source descriptions in architecture documentation.
+- Second-person runbook validation as a handoff improvement, if requested later.
