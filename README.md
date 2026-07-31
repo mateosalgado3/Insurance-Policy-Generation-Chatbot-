@@ -1,101 +1,136 @@
 # Insurance Policy Generation Chatbot
 
-Asistente RAG para consultar las pólizas QuePlan con respuestas fundamentadas y
-fuentes citables. El MVP usa FastAPI, embeddings y generación de OpenAI, y un
-índice Qdrant persistente local.
+Asistente agente para consultar pólizas QuePlan, combinar evidencia contractual
+con información web reciente y generar borradores trazables para revisión humana.
 
-## Estado
+## Estado técnico
 
-- Descarga S3, EDA y perfilado de los 9 PDFs: implementados.
-- Contrato FastAPI `/ask`, configuración, liveness y readiness: implementados.
-- Extracción de chunks, embeddings, indexación idempotente y retrieval: implementados.
-- Generación fundamentada con OpenAI Responses API: implementada.
-- Frontend, noticias web y generación opcional de pólizas: fuera de este cambio.
+- 9 PDF auditados: 267 páginas, 81.698 palabras y 0 fallos de extracción.
+- 262 chunks deterministas indexados en Qdrant con `text-embedding-3-small`.
+- RAG de pólizas con `gpt-4.1-mini`, citas por archivo, página y artículo.
+- Agente LangChain con rutas `policies`, `web`, `combined` y fuera de alcance.
+- Web search mediante OpenAI Responses API y `gpt-5.6-luna`.
+- FastAPI con `/ask`, `/generate-policy`, `/config`, `/health` y `/ready`.
+- Frontend Chainlit con selector de ruta, filtro de póliza y generación de borradores.
+- API y frontend empaquetados con Docker Compose.
+- Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
 
-## Instalación
+## Inicio rápido con Docker
 
-Requiere Python 3.12.
+Requisitos: Docker Desktop activo y un `.env` con `OPENAI_API_KEY`.
+
+```powershell
+cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
+docker compose up --build
+```
+
+Abrir:
+
+- Chat: `http://127.0.0.1:8001`
+- Swagger: `http://127.0.0.1:8000/docs`
+- Readiness: `http://127.0.0.1:8000/ready`
+
+Detener:
+
+```powershell
+docker compose down
+```
+
+Compose lee `.env` para inyectar únicamente las variables necesarias. El archivo
+no se copia a las imágenes.
+
+## Instalación local
 
 ```powershell
 cd "C:\Users\pmate\ANYONEAI\PROYECTO FINAL"
 py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
+uv sync --extra dev
 Copy-Item .env.example .env  # solo si .env todavía no existe
 ```
 
-Los secretos viven únicamente en `.env`, que Git ignora. Para el RAG real se
-necesita `OPENAI_API_KEY` con cuota API disponible. Una suscripción de ChatGPT
-no incluye automáticamente saldo de API.
+Terminal 1:
 
-## Descargar y analizar el dataset
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
+```
+
+Terminal 2:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m chainlit run frontend/app.py --headless --port 8001
+```
+
+## Modos de consulta
+
+`POST /ask` conserva el contrato estable:
+
+```json
+{
+  "answer": "respuesta",
+  "sources": ["fuente"],
+  "metadata": {"route": "policies"}
+}
+```
+
+El request acepta `mode`:
+
+- `auto`: el agente LangChain elige una herramienta.
+- `policies`: fuerza búsqueda en Qdrant y respuesta fundamentada.
+- `web`: fuerza OpenAI web search para información reciente.
+- `combined`: presenta evidencia contractual y web en secciones separadas.
+
+Comandos de Chainlit:
+
+```text
+/mode auto|policies|web|combined
+/policy POL320200071
+/policy clear
+/draft POL320200071,POL320150503 | Combine las cláusulas de cobertura
+/config
+```
+
+Los modos explícitos evitan la llamada del router y son útiles para una demo
+determinista. Web search y generación consumen OpenAI API.
+
+## Generación de borradores
+
+`POST /generate-policy` acepta instrucciones y entre una y tres pólizas fuente.
+Recupera evidencia desde Qdrant y produce un texto con citas. Todo resultado se
+marca como borrador y requiere revisión legal, actuarial y de cumplimiento.
+
+## Datos, EDA e índice
 
 ```powershell
 python -m insurance_chatbot.eda --download
 python scripts/profile_dataset.py
-```
-
-El EDA se guarda en `outputs/eda/` y el perfilado en `outputs/profiling/`.
-
-## Crear o actualizar el índice
-
-Detén FastAPI antes de ejecutar este comando, porque Qdrant embebido permite un
-solo proceso sobre el directorio local:
-
-```powershell
+python scripts/chunk_policies.py
 python -m insurance_chatbot.indexing
 ```
 
-El proceso:
+El repositorio ya incluye `data/index/chunks.jsonl` y el snapshot Qdrant. Si
+`chunk_id`, modelo y versión coinciden, el indexador reutiliza los 262 vectores
+y realiza cero llamadas a OpenAI.
 
-1. extrae texto de los 9 PDFs;
-2. conserva `policy_id`, archivo, página, artículo y hash;
-3. aplica el tamaño decidido por el perfilado (1.024 tokens estimados y overlap 154);
-4. obtiene embeddings en lotes con OpenAI;
-5. omite documentos sin cambios y reemplaza de forma segura los que cambiaron.
+El snapshot contiene texto extraído de pólizas. Mantener el repositorio privado
+hasta confirmar permisos de redistribución del dataset.
 
-Si se cambia a un embedding con otra dimensión:
-
-```powershell
-python -m insurance_chatbot.indexing --recreate
-```
-
-## Levantar y comprobar la API
+## Evaluación y calidad
 
 ```powershell
-python -m uvicorn insurance_chatbot.app:app --app-dir src --reload
-```
-
-- Swagger: `http://127.0.0.1:8000/docs`
-- Liveness: `http://127.0.0.1:8000/health`
-- Readiness real: `http://127.0.0.1:8000/ready`
-- Configuración pública: `http://127.0.0.1:8000/config`
-
-Ejemplo:
-
-```powershell
-$body = @{
-  question = "¿Qué coberturas hospitalarias contempla la póliza?"
-  policy_id = "POL320190074"
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/ask" `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-`/health` confirma que FastAPI está vivo. `/ready` solo devuelve 200 cuando la
-clave está configurada y Qdrant contiene chunks; así el demo no aparenta estar
-listo si falta una dependencia.
-
-## Calidad
-
-```powershell
-python -m ruff check src tests
+$env:MPLBACKEND="Agg"
+python -m ruff check src scripts frontend tests
 python -m pytest -q
+python scripts/evaluate_retrieval.py --provider local --top-k 5
 ```
 
-El diseño y el estado técnico están en [docs/architecture.md](docs/architecture.md).
+La evaluación OpenAI de las 12 preguntas curadas:
+
+```powershell
+python scripts/evaluate_retrieval.py --provider openai --top-k 5
+```
+
+Consulta [la arquitectura](docs/architecture.md), el
+[reporte de evaluación](docs/evaluation.md) y el
+[runbook de demo](docs/demo.md).

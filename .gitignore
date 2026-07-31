@@ -4,14 +4,24 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.chainlit/
+/chainlit.md
 .coverage
 htmlcov/
 
 # Local data, generated indexes and reports
 data/raw/*
 !data/raw/.gitkeep
+
+# Share the generated chunks + Qdrant index so teammates don't have to burn
+# OpenAI credits just to get a working local demo. .lock is runtime state,
+# not data, so it stays ignored even inside the shared qdrant/ folder.
 data/index/*
 !data/index/.gitkeep
+!data/index/chunks.jsonl
+!data/index/qdrant/
+data/index/qdrant/.lock
+
 outputs/*
 !outputs/.gitkeep
 

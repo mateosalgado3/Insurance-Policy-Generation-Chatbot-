@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 import insurance_chatbot.app as app_module
 from insurance_chatbot.rag_service import FakeRAGService, IndexStatus
+from insurance_chatbot.schemas import PolicyDraftResponse
 
 
 def override_get_rag_service() -> FakeRAGService:
@@ -18,7 +19,7 @@ def test_health_endpoint_is_liveness_only() -> None:
     assert response.json() == {
         "status": "healthy",
         "service": "Insurance Policy RAG API",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
@@ -57,6 +58,41 @@ def test_ask_endpoint_returns_stable_contract() -> None:
     assert set(data) == {"answer", "sources", "metadata"}
     assert isinstance(data["sources"], list)
     assert isinstance(data["metadata"], dict)
+
+
+def test_ask_endpoint_accepts_explicit_web_mode() -> None:
+    response = client.post(
+        "/ask",
+        json={"question": "Latest insurance news", "mode": "web"},
+    )
+    assert response.status_code == 200
+    assert response.json()["metadata"]["route"] == "web"
+
+
+def test_generate_policy_endpoint_contract(monkeypatch) -> None:
+    class FakeDraftService:
+        async def generate(
+            self,
+            instructions: str,
+            source_policy_ids: list[str],
+        ) -> PolicyDraftResponse:
+            return PolicyDraftResponse(
+                draft="BORRADOR PARA REVISIÓN",
+                sources=["POL1.pdf - Página 1"],
+                metadata={"source_policy_ids": source_policy_ids},
+            )
+
+    monkeypatch.setattr(app_module, "_build_draft_service", lambda: FakeDraftService())
+    response = client.post(
+        "/generate-policy",
+        json={
+            "instructions": "Combine the hospital coverage clauses",
+            "source_policy_ids": ["POL1"],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["draft"] == "BORRADOR PARA REVISIÓN"
+    assert "revisión legal" in response.json()["disclaimer"]
 
 
 def test_ask_endpoint_rejects_short_question() -> None:

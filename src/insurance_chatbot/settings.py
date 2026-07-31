@@ -36,6 +36,14 @@ def _score_threshold() -> float | None:
     return value
 
 
+def _choice(name: str, default: str, allowed: set[str]) -> str:
+    value = os.getenv(name, default).strip().lower()
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {choices}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Non-secret runtime settings plus the API key kept in memory only."""
@@ -47,6 +55,9 @@ class Settings:
     qdrant_collection: str
     top_k: int
     score_threshold: float | None
+    router_model: str = "gpt-4.1-mini"
+    web_model: str = "gpt-5.6-luna"
+    web_search_context_size: str = "medium"
 
     @property
     def openai_configured(self) -> bool:
@@ -60,7 +71,14 @@ class Settings:
         return cls(
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini").strip(),
+            router_model=os.getenv("OPENAI_ROUTER_MODEL", "gpt-4.1-mini").strip(),
+            web_model=os.getenv("OPENAI_WEB_MODEL", "gpt-5.6-luna").strip(),
             embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small").strip(),
+            web_search_context_size=_choice(
+                "WEB_SEARCH_CONTEXT_SIZE",
+                "medium",
+                {"low", "medium", "high"},
+            ),
             qdrant_path=qdrant_path.resolve(),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "queplan_policies").strip(),
             top_k=_positive_int("RAG_TOP_K", 5),

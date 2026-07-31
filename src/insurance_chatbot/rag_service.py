@@ -7,12 +7,17 @@ import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlparse
 
+from langchain.agents import create_agent
+from langchain.tools import tool
+from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient, models
 
-from insurance_chatbot.schemas import AskResponse
+from insurance_chatbot.schemas import AskResponse, PolicyDraftResponse, QueryMode
 
 
 class IndexNotReadyError(RuntimeError):
@@ -175,7 +180,12 @@ class FakeRetrievalService(AbstractRetrievalService):
 
 class AbstractRAGService(ABC):
     @abstractmethod
-    async def query(self, question: str, policy_id: str | None = None) -> AskResponse:
+    async def query(
+        self,
+        question: str,
+        policy_id: str | None = None,
+        mode: QueryMode | str = QueryMode.AUTO,
+    ) -> AskResponse:
         """Answer a question using retrieved policy evidence."""
 
 
@@ -185,7 +195,12 @@ class FakeRAGService(AbstractRAGService):
     def __init__(self, retrieval_service: AbstractRetrievalService | None = None):
         self.retrieval_service = retrieval_service or FakeRetrievalService()
 
-    async def query(self, question: str, policy_id: str | None = None) -> AskResponse:
+    async def query(
+        self,
+        question: str,
+        policy_id: str | None = None,
+        mode: QueryMode | str = QueryMode.AUTO,
+    ) -> AskResponse:
         start_time = time.perf_counter()
         if "trigger_val_err" in question:
             raise ValueError("Parámetros de consulta no válidos")
@@ -215,6 +230,7 @@ class FakeRAGService(AbstractRAGService):
                 "embedding_model": "fake-embedding",
                 "response_time_ms": elapsed_time_ms,
                 "policy_id": policy_id or "all",
+                "route": str(mode),
                 "is_mock": True,
             },
         )
@@ -242,6 +258,7 @@ class RealRAGService(AbstractRAGService):
         self,
         question: str,
         policy_id: str | None = None,
+        mode: QueryMode | str = QueryMode.POLICIES,
     ) -> AskResponse:
         normalized_question = question.strip()
         if not normalized_question:
@@ -319,6 +336,435 @@ class RealRAGService(AbstractRAGService):
                 "policy_id": policy_id or "all",
                 "retrieved_chunks": len(chunks),
                 "retrieval_scores": retrieval_scores,
+                "response_id": getattr(response, "id", None),
+                "route": QueryMode.POLICIES.value,
+                "is_mock": False,
+            },
+        )
+
+
+def _object_value(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+class OpenAIWebSearchService:
+    """Current insurance information using the Responses API web-search tool."""
+
+    def __init__(
+        self,
+        *,
+        openai_client: AsyncOpenAI,
+        web_model: str,
+        search_context_size: str = "medium",
+    ) -> None:
+        if search_context_size not in {"low", "medium", "high"}:
+            raise ValueError("search_context_size must be low, medium, or high")
+        self.openai_client = openai_client
+        self.web_model = web_model
+        self.search_context_size = search_context_size
+
+    @staticmethod
+    def _extract_sources(response: Any) -> list[str]:
+        cited: list[tuple[str, str | None]] = []
+        discovered: list[tuple[str, str | None]] = []
+
+        for item in _object_value(response, "output", []) or []:
+            if _object_value(item, "type") == "message":
+                for content in _object_value(item, "content", []) or []:
+                    for annotation in _object_value(content, "annotations", []) or []:
+                        if _object_value(annotation, "type") == "url_citation":
+                            cited.append(
+                                (
+                                    _object_value(annotation, "url"),
+                                    _object_value(annotation, "title"),
+                                )
+                            )
+            if _object_value(item, "type") == "web_search_call":
+                action = _object_value(item, "action")
+                for source in _object_value(action, "sources", []) or []:
+                    discovered.append((_object_value(source, "url"), None))
+
+        sources: list[str] = []
+        seen_urls: set[str] = set()
+        for url, title in [*cited, *discovered]:
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            host = urlparse(url).netloc or "web"
+            sources.append(f"[Web] {title or host} — {url}")
+            if len(sources) == 12:
+                break
+        return sources
+
+    async def query(self, question: str) -> AskResponse:
+        normalized_question = question.strip()
+        if not normalized_question:
+            raise ValueError("question must not be empty")
+
+        start_time = time.perf_counter()
+        response = await self.openai_client.responses.create(
+            model=self.web_model,
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": self.search_context_size,
+                }
+            ],
+            include=["web_search_call.action.sources"],
+            max_output_tokens=700,
+            instructions=(
+                "Busca información actual y verificable relacionada con seguros. "
+                "Prioriza fuentes oficiales, reguladores y publicaciones reputadas. "
+                "Distingue claramente noticias o regulación vigente de las cláusulas "
+                "contractuales de una póliza. Responde de forma concisa, con máximo "
+                "seis viñetas, e incluye citas web en la respuesta. "
+                "No proporciones asesoría legal ni inventes hechos."
+            ),
+            input=normalized_question,
+        )
+        answer = response.output_text.strip()
+        if not answer:
+            raise RuntimeError("OpenAI returned an empty web-search response")
+        sources = self._extract_sources(response)
+        return AskResponse(
+            answer=answer,
+            sources=sources,
+            metadata={
+                "model": self.web_model,
+                "response_time_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                "web_sources": len(sources),
+                "response_id": getattr(response, "id", None),
+                "route": QueryMode.WEB.value,
+                "is_mock": False,
+            },
+        )
+
+
+class AgenticRAGService(AbstractRAGService):
+    """LangChain agent that routes between policy and web-search tools."""
+
+    def __init__(
+        self,
+        *,
+        policy_service: RealRAGService,
+        web_service: OpenAIWebSearchService,
+        router_model: str,
+        openai_api_key: str,
+        agent: Any | None = None,
+    ) -> None:
+        self.policy_service = policy_service
+        self.web_service = web_service
+        self.router_model = router_model
+        self._tools = self._build_tools()
+        if agent is None:
+            model = ChatOpenAI(
+                model=router_model,
+                api_key=openai_api_key,
+                temperature=0,
+                timeout=30,
+                max_retries=1,
+            )
+            agent = create_agent(
+                model=model,
+                tools=self._tools,
+                system_prompt=(
+                    "Eres el agente de enrutamiento de un asistente de seguros. "
+                    "Debes llamar exactamente una herramienta y su resultado será la "
+                    "respuesta final. Usa search_policy_documents para coberturas, "
+                    "exclusiones, vigencias, montos o cláusulas del corpus. Usa "
+                    "search_current_insurance_information para noticias, regulación o "
+                    "hechos recientes. Usa compare_policy_and_web cuando el usuario pida "
+                    "comparar documentos con información actual. Usa decline_out_of_scope "
+                    "si la consulta no trata sobre seguros. No respondas sin herramienta."
+                ),
+            )
+        self.agent = agent
+
+    @staticmethod
+    def _tag_route(response: AskResponse, route: QueryMode, **extra: Any) -> AskResponse:
+        metadata = {**response.metadata, "route": route.value, **extra}
+        return response.model_copy(update={"metadata": metadata})
+
+    async def _combined(self, question: str, policy_id: str | None) -> AskResponse:
+        results = await asyncio.gather(
+            self.policy_service.query(question, policy_id, QueryMode.POLICIES),
+            self.web_service.query(question),
+            return_exceptions=True,
+        )
+        policy_result, web_result = results
+        sections: list[str] = []
+        sources: list[str] = []
+        component_errors: list[str] = []
+
+        if isinstance(policy_result, AskResponse):
+            sections.append(f"## Evidencia de pólizas\n\n{policy_result.answer}")
+            sources.extend(policy_result.sources)
+        else:
+            component_errors.append(f"policies:{type(policy_result).__name__}")
+        if isinstance(web_result, AskResponse):
+            sections.append(f"## Información web actual\n\n{web_result.answer}")
+            sources.extend(web_result.sources)
+        else:
+            component_errors.append(f"web:{type(web_result).__name__}")
+
+        if not sections:
+            raise RuntimeError("Both policy and web routes failed")
+        if component_errors:
+            sections.append(
+                "\nNo fue posible completar una de las fuentes de información; "
+                "la respuesta muestra únicamente la evidencia disponible."
+            )
+        return AskResponse(
+            answer="\n\n".join(sections),
+            sources=list(dict.fromkeys(sources)),
+            metadata={
+                "model": f"{self.policy_service.chat_model}+{self.web_service.web_model}",
+                "route": QueryMode.COMBINED.value,
+                "component_errors": component_errors,
+                "is_mock": False,
+            },
+        )
+
+    @staticmethod
+    def _decline(question: str) -> AskResponse:
+        return AskResponse(
+            answer=(
+                "No puedo responder esa consulta porque está fuera del alcance de este "
+                "asistente. Puedo ayudar con pólizas de seguros, coberturas, exclusiones "
+                "o información reciente del sector asegurador."
+            ),
+            sources=[],
+            metadata={
+                "route": "out_of_scope",
+                "is_mock": False,
+                "question_length": len(question),
+            },
+        )
+
+    def _build_tools(self) -> list[Any]:
+        @tool("search_policy_documents", return_direct=True)
+        async def search_policy_documents(
+            question: str,
+            policy_id: str | None = None,
+        ) -> str:
+            """Answer a question from the indexed insurance-policy documents."""
+            response = await self.policy_service.query(
+                question,
+                policy_id,
+                QueryMode.POLICIES,
+            )
+            return self._tag_route(response, QueryMode.POLICIES).model_dump_json()
+
+        @tool("search_current_insurance_information", return_direct=True)
+        async def search_current_insurance_information(question: str) -> str:
+            """Search the web for current insurance news, regulation, or facts."""
+            response = await self.web_service.query(question)
+            return self._tag_route(response, QueryMode.WEB).model_dump_json()
+
+        @tool("compare_policy_and_web", return_direct=True)
+        async def compare_policy_and_web(
+            question: str,
+            policy_id: str | None = None,
+        ) -> str:
+            """Combine indexed policy evidence with current web information."""
+            return (await self._combined(question, policy_id)).model_dump_json()
+
+        @tool("decline_out_of_scope", return_direct=True)
+        async def decline_out_of_scope(question: str) -> str:
+            """Decline questions unrelated to insurance."""
+            return self._decline(question).model_dump_json()
+
+        return [
+            search_policy_documents,
+            search_current_insurance_information,
+            compare_policy_and_web,
+            decline_out_of_scope,
+        ]
+
+    async def _dispatch(
+        self,
+        mode: QueryMode,
+        question: str,
+        policy_id: str | None,
+    ) -> AskResponse:
+        if mode == QueryMode.POLICIES:
+            response = await self.policy_service.query(question, policy_id, mode)
+            return self._tag_route(response, mode, router="explicit")
+        if mode == QueryMode.WEB:
+            response = await self.web_service.query(question)
+            return self._tag_route(response, mode, router="explicit")
+        if mode == QueryMode.COMBINED:
+            response = await self._combined(question, policy_id)
+            return self._tag_route(response, mode, router="explicit")
+        raise ValueError(f"Unsupported explicit mode: {mode}")
+
+    @staticmethod
+    def _fallback_mode(question: str, policy_id: str | None) -> QueryMode | None:
+        lowered = question.casefold()
+        insurance_terms = {
+            "seguro",
+            "póliza",
+            "poliza",
+            "cobertura",
+            "exclusión",
+            "exclusion",
+            "asegurado",
+            "prima",
+            "siniestro",
+            "indemnización",
+            "indemnizacion",
+        }
+        current_terms = {
+            "actual",
+            "hoy",
+            "reciente",
+            "noticia",
+            "última",
+            "ultima",
+            "nuevo",
+            "regulación",
+            "regulacion",
+            "internet",
+            "web",
+        }
+        is_insurance = policy_id is not None or any(term in lowered for term in insurance_terms)
+        is_current = any(term in lowered for term in current_terms)
+        if is_insurance and is_current:
+            return QueryMode.COMBINED
+        if is_current:
+            return QueryMode.WEB
+        if is_insurance:
+            return QueryMode.POLICIES
+        return None
+
+    async def _agent_query(self, question: str, policy_id: str | None) -> AskResponse:
+        user_message = question
+        if policy_id:
+            user_message = f"{question}\n\nPolicy id filter: {policy_id}"
+        try:
+            result = await asyncio.wait_for(
+                self.agent.ainvoke({"messages": [{"role": "user", "content": user_message}]}),
+                timeout=60,
+            )
+            for message in reversed(result.get("messages", [])):
+                if getattr(message, "type", None) != "tool":
+                    continue
+                content = getattr(message, "content", "")
+                if isinstance(content, str):
+                    response = AskResponse.model_validate_json(content)
+                    return response.model_copy(
+                        update={
+                            "metadata": {
+                                **response.metadata,
+                                "router": "langchain_agent",
+                                "router_model": self.router_model,
+                            }
+                        }
+                    )
+        except Exception:
+            pass
+
+        fallback = self._fallback_mode(question, policy_id)
+        if fallback is None:
+            return self._decline(question).model_copy(
+                update={"metadata": {"route": "out_of_scope", "router": "fallback"}}
+            )
+        response = await self._dispatch(fallback, question, policy_id)
+        return response.model_copy(
+            update={"metadata": {**response.metadata, "router": "fallback"}}
+        )
+
+    async def query(
+        self,
+        question: str,
+        policy_id: str | None = None,
+        mode: QueryMode | str = QueryMode.AUTO,
+    ) -> AskResponse:
+        normalized_question = question.strip()
+        if not normalized_question:
+            raise ValueError("question must not be empty")
+        selected_mode = QueryMode(mode)
+        if selected_mode == QueryMode.AUTO:
+            return await self._agent_query(normalized_question, policy_id)
+        return await self._dispatch(selected_mode, normalized_question, policy_id)
+
+
+class PolicyDraftService:
+    """Generate a traceable policy draft from one to three indexed policies."""
+
+    def __init__(
+        self,
+        *,
+        retrieval_service: AbstractRetrievalService,
+        openai_client: AsyncOpenAI,
+        chat_model: str,
+        top_k_per_policy: int = 3,
+    ) -> None:
+        self.retrieval_service = retrieval_service
+        self.openai_client = openai_client
+        self.chat_model = chat_model
+        self.top_k_per_policy = top_k_per_policy
+
+    async def generate(
+        self,
+        instructions: str,
+        source_policy_ids: list[str],
+    ) -> PolicyDraftResponse:
+        policy_ids = list(dict.fromkeys(policy_id.strip() for policy_id in source_policy_ids))
+        if not policy_ids or any(not policy_id for policy_id in policy_ids):
+            raise ValueError("source_policy_ids must contain non-empty values")
+
+        chunks: list[SourceChunk] = []
+        for policy_id in policy_ids:
+            chunks.extend(
+                await self.retrieval_service.search(
+                    question=instructions,
+                    policy_id=policy_id,
+                    top_k=self.top_k_per_policy,
+                )
+            )
+        if not chunks:
+            raise IndexNotReadyError("No source evidence was found for the requested policies")
+
+        context_parts: list[str] = []
+        sources: list[str] = []
+        for index, chunk in enumerate(chunks, start=1):
+            source = chunk.source_file
+            if chunk.page_number is not None:
+                source = f"{source} - Página {chunk.page_number}"
+            if chunk.article:
+                source = f"{source} - {chunk.article}"
+            sources.append(source)
+            context_parts.append(f"[Fuente {index}: {source}]\n{chunk.content}")
+
+        context = "\n\n".join(context_parts)
+        response = await self.openai_client.responses.create(
+            model=self.chat_model,
+            instructions=(
+                "Redacta un borrador demostrativo de sección de póliza usando únicamente "
+                "la evidencia proporcionada. Conserva las citas [Fuente N]. No inventes "
+                "montos, exclusiones, jurisdicción ni requisitos. Señala cualquier dato "
+                "que necesite definición humana. Incluye un encabezado visible que diga "
+                "'BORRADOR PARA REVISIÓN'. No presentes el texto como asesoría legal."
+            ),
+            input=(
+                f"Requisitos del borrador:\n{instructions}\n\n"
+                f"Pólizas fuente: {', '.join(policy_ids)}\n\n"
+                f"Evidencia:\n{context}"
+            ),
+        )
+        draft = response.output_text.strip()
+        if not draft:
+            raise RuntimeError("OpenAI returned an empty policy draft")
+        return PolicyDraftResponse(
+            draft=draft,
+            sources=list(dict.fromkeys(sources)),
+            metadata={
+                "model": self.chat_model,
+                "source_policy_ids": policy_ids,
+                "retrieved_chunks": len(chunks),
                 "response_id": getattr(response, "id", None),
                 "is_mock": False,
             },
