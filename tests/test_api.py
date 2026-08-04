@@ -19,7 +19,7 @@ def test_health_endpoint_is_liveness_only() -> None:
     assert response.json() == {
         "status": "healthy",
         "service": "Insurance Policy RAG API",
-        "version": "0.3.0",
+        "version": "0.4.0",
     }
 
 
@@ -67,6 +67,34 @@ def test_ask_endpoint_accepts_explicit_web_mode() -> None:
     )
     assert response.status_code == 200
     assert response.json()["metadata"]["route"] == "web"
+
+
+def test_stream_endpoint_emits_status_tokens_and_complete() -> None:
+    response = client.post(
+        "/ask/stream",
+        json={"question": "What does the policy cover?", "mode": "policies"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: status" in response.text
+    assert "event: token" in response.text
+    assert "event: complete" in response.text
+    assert "La cobertura" in response.text
+
+
+def test_stream_endpoint_emits_safe_error_event() -> None:
+    response = client.post(
+        "/ask/stream",
+        json={"question": "trigger_internal_err test"},
+    )
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert '"status_code":500' in response.text
+    assert "Error interno al procesar" in response.text
+    assert "postgresql" not in response.text
+    assert "secret" not in response.text
 
 
 def test_generate_policy_endpoint_contract(monkeypatch) -> None:

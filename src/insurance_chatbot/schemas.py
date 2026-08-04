@@ -116,6 +116,18 @@ class HealthResponse(BaseModel):
     service: str
     version: str
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "status": "healthy",
+                    "service": "Insurance Policy RAG API",
+                    "version": "0.4.0",
+                }
+            ]
+        }
+    }
+
 
 class ReadinessResponse(BaseModel):
     status: str

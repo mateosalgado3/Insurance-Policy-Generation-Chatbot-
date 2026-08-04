@@ -15,7 +15,7 @@ flowchart LR
 
     subgraph runtime["Aplicación"]
         user["Usuario"] --> ui["Chainlit :8001"]
-        ui --> api["FastAPI :8000"]
+        ui -->|"POST /ask/stream · SSE"| api["FastAPI :8000"]
         api --> agent{"Agente LangChain"}
         agent -->|policies| queryEmb["Embedding de consulta"]
         queryEmb --> qdrant
@@ -29,7 +29,8 @@ flowchart LR
         decline --> response
         api -->|/generate-policy| draft["Borrador trazable"]
         qdrant --> draft
-        response --> ui
+        response --> stream["status + token + complete"]
+        stream --> ui
         draft --> ui
     end
 ```
@@ -48,6 +49,8 @@ flowchart LR
    `url_citation` y de las acciones de web search.
 6. **Los borradores no son documentos finales.** Solo recombinan evidencia y
    siempre exigen revisión humana especializada.
+7. **La conversación usa SSE.** FastAPI envía estados periódicos y luego
+   fragmentos de la respuesta; Chainlit los renderiza progresivamente.
 
 ## Componentes
 
@@ -61,7 +64,7 @@ flowchart LR
 | Agente | selección de herramienta y fallback | `AgenticRAGService` |
 | Generación | borrador desde 1–3 pólizas | `PolicyDraftService` |
 | API | contratos, readiness y errores seguros | `app.py`, `schemas.py` |
-| UI | sesión, modos, fuentes y comandos | `frontend/` |
+| UI | chips, sesión, modos, streaming, fuentes y comandos | `frontend/` |
 | Operación | dos contenedores y healthchecks | `compose.yaml` |
 
 ## Flujo de consulta
@@ -71,7 +74,11 @@ flowchart LR
 3. `policies` consulta Qdrant y genera solo con los chunks recuperados.
 4. `web` usa la herramienta alojada de OpenAI para información actual.
 5. `combined` ejecuta ambas rutas y conserva separadas sus evidencias.
-6. FastAPI devuelve `answer`, `sources` y `metadata`, incluyendo la ruta.
+6. FastAPI conserva el contrato JSON de `/ask`; `/ask/stream` lo transporta
+   como eventos SSE `status`, `token`, `complete` o `error`.
+7. Chainlit muestra progreso, anima la espera y agrega fuentes y metadatos al
+   terminar. Si la pregunta contiene un ID `POL...`, lo usa como filtro solo
+   para esa consulta.
 
 Si LangChain no puede enrutar por timeout o error transitorio, un fallback
 determinista selecciona la ruta mediante intención y vocabulario del dominio.

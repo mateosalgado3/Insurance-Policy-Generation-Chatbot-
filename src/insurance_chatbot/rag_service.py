@@ -312,11 +312,13 @@ class RealRAGService(AbstractRAGService):
             model=self.chat_model,
             instructions=(
                 "Eres un asistente especializado en pólizas de seguros. "
+                "Responde en el mismo idioma de la pregunta del usuario. "
                 "Responde únicamente con base en el contexto recuperado. "
                 "No inventes coberturas, exclusiones, montos ni vigencias. "
                 "Cita las fuentes como [Fuente N]. "
                 "Cuando la evidencia sea insuficiente, indícalo claramente. "
-                "No proporciones asesoría legal."
+                "Organiza respuestas extensas con títulos y viñetas, evita repetir "
+                "información y no proporciones asesoría legal."
             ),
             input=(
                 f"Pregunta del usuario:\n{normalized_question}\n\nContexto recuperado:\n{context}"
@@ -413,21 +415,27 @@ class OpenAIWebSearchService:
                 }
             ],
             include=["web_search_call.action.sources"],
-            max_output_tokens=700,
+            reasoning={"effort": "low"},
+            text={"verbosity": "low"},
+            max_output_tokens=2000,
             instructions=(
                 "Busca información actual y verificable relacionada con seguros. "
                 "Prioriza fuentes oficiales, reguladores y publicaciones reputadas. "
                 "Distingue claramente noticias o regulación vigente de las cláusulas "
-                "contractuales de una póliza. Responde de forma concisa, con máximo "
+                "contractuales de una póliza. Responde en el mismo idioma de la "
+                "pregunta. Responde de forma concisa, con máximo "
                 "seis viñetas, e incluye citas web en la respuesta. "
                 "No proporciones asesoría legal ni inventes hechos."
             ),
             input=normalized_question,
         )
-        answer = response.output_text.strip()
-        if not answer:
-            raise RuntimeError("OpenAI returned an empty web-search response")
+        answer = str(response.output_text or "").strip()
         sources = self._extract_sources(response)
+        if not answer:
+            answer = (
+                "No fue posible generar un resumen web en este momento. "
+                "Puedes revisar las fuentes recuperadas o volver a intentarlo."
+            )
         return AskResponse(
             answer=answer,
             sources=sources,
@@ -436,6 +444,7 @@ class OpenAIWebSearchService:
                 "response_time_ms": round((time.perf_counter() - start_time) * 1000, 2),
                 "web_sources": len(sources),
                 "response_id": getattr(response, "id", None),
+                "degraded": not bool(response.output_text),
                 "route": QueryMode.WEB.value,
                 "is_mock": False,
             },
@@ -529,12 +538,29 @@ class AgenticRAGService(AbstractRAGService):
 
     @staticmethod
     def _decline(question: str) -> AskResponse:
+        lowered = question.casefold()
+        spanish_markers = {
+            "qué",
+            "que ",
+            "cómo",
+            "como ",
+            "póliza",
+            "seguro",
+            "cobertura",
+            "exclusión",
+        }
+        spanish = any(marker in lowered for marker in spanish_markers)
+        answer = (
+            "No puedo responder esa consulta porque está fuera del alcance de este "
+            "asistente. Puedo ayudar con pólizas de seguros, coberturas, exclusiones "
+            "o información reciente del sector asegurador."
+            if spanish
+            else "I cannot answer that request because it is outside this assistant's "
+            "scope. I can help with insurance policies, coverage, exclusions, or "
+            "recent insurance-sector information."
+        )
         return AskResponse(
-            answer=(
-                "No puedo responder esa consulta porque está fuera del alcance de este "
-                "asistente. Puedo ayudar con pólizas de seguros, coberturas, exclusiones "
-                "o información reciente del sector asegurador."
-            ),
+            answer=answer,
             sources=[],
             metadata={
                 "route": "out_of_scope",

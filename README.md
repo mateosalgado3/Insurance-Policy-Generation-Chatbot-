@@ -10,8 +10,8 @@ con información web reciente y generar borradores trazables para revisión huma
 - RAG de pólizas con `gpt-4.1-mini`, citas por archivo, página y artículo.
 - Agente LangChain con rutas `policies`, `web`, `combined` y fuera de alcance.
 - Web search mediante OpenAI Responses API y `gpt-5.6-luna`.
-- FastAPI con `/ask`, `/generate-policy`, `/config`, `/health` y `/ready`.
-- Frontend Chainlit con selector de ruta, filtro de póliza y generación de borradores.
+- FastAPI con `/ask`, `/ask/stream`, `/generate-policy`, `/config`, `/health` y `/ready`.
+- Frontend Chainlit con chips de ruta, filtro automático/manual por póliza, streaming y generación de borradores.
 - API y frontend empaquetados con Docker Compose.
 - Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
 
@@ -89,7 +89,13 @@ Comandos de Chainlit:
 /policy clear
 /draft POL320200071,POL320150503 | Combine las cláusulas de cobertura
 /config
+/ready
+/help
 ```
+
+El frontend consume `POST /ask/stream` mediante Server-Sent Events. Muestra el
+estado de la consulta mientras el backend trabaja y renderiza progresivamente la
+respuesta, sin alterar el contrato JSON estable de `POST /ask`.
 
 Los modos explícitos evitan la llamada del router y son útiles para una demo
 determinista. Web search y generación consumen OpenAI API.

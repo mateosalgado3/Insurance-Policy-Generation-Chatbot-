@@ -7,13 +7,15 @@ backend, as required by the frontend specification.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, AsyncIterator
 
 import httpx
 
 from frontend.config import (
     ASK_ENDPOINT,
+    ASK_STREAM_ENDPOINT,
     ASK_TIMEOUT_SECONDS,
     CONFIG_ENDPOINT,
     DRAFT_ENDPOINT,
@@ -48,6 +50,12 @@ class AskResult:
     answer: str
     sources: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class AskStreamEvent:
+    event: str
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -178,6 +186,63 @@ async def ask_question(
         sources=body.get("sources", []),
         metadata=body.get("metadata", {}),
     )
+
+
+async def stream_question(
+    question: str,
+    policy_id: str | None,
+    mode: str = "auto",
+) -> AsyncIterator[AskStreamEvent]:
+    """Yield parsed Server-Sent Events from the streaming ask endpoint."""
+    payload: dict[str, Any] = {"question": question, "mode": mode}
+    if policy_id:
+        payload["policy_id"] = policy_id
+
+    try:
+        timeout = httpx.Timeout(ASK_TIMEOUT_SECONDS, connect=STATUS_TIMEOUT_SECONDS)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", ASK_STREAM_ENDPOINT, json=payload) as response:
+                if response.status_code != 200:
+                    raw = (await response.aread()).decode("utf-8", errors="replace")
+                    detail = raw
+                    try:
+                        detail = json.loads(raw).get("detail", raw)
+                    except (ValueError, AttributeError):
+                        pass
+                    raise ApiResponseError(response.status_code, detail)
+
+                event_name = "message"
+                data_lines: list[str] = []
+                async for line in response.aiter_lines():
+                    if not line:
+                        if data_lines:
+                            raw_data = "\n".join(data_lines)
+                            try:
+                                data = json.loads(raw_data)
+                            except ValueError as exc:
+                                raise ApiResponseError(
+                                    502, "The backend returned an invalid stream event"
+                                ) from exc
+                            yield AskStreamEvent(event=event_name, data=data)
+                        event_name = "message"
+                        data_lines = []
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    if line.startswith("event:"):
+                        event_name = line.removeprefix("event:").strip()
+                    elif line.startswith("data:"):
+                        data_lines.append(line.removeprefix("data:").lstrip())
+
+                if data_lines:
+                    yield AskStreamEvent(
+                        event=event_name,
+                        data=json.loads("\n".join(data_lines)),
+                    )
+    except httpx.TimeoutException as exc:
+        raise ApiTimeoutError("The backend did not respond in time") from exc
+    except httpx.RequestError as exc:
+        raise ApiUnavailableError("The backend could not be reached") from exc
 
 
 async def generate_policy_draft(

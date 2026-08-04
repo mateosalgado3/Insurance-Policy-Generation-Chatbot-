@@ -6,6 +6,8 @@ import httpx
 
 from frontend import api_client
 from frontend.app import (
+    _extract_policy_id,
+    _format_response_context,
     _format_sources,
     _parse_draft_command,
     _parse_mode_command,
@@ -33,6 +35,8 @@ def test_command_parsers() -> None:
         "Combine coverage",
     )
     assert _parse_draft_command("normal question") is None
+    assert _extract_policy_id("Summarize policy POL320190074 please") == "POL320190074"
+    assert _extract_policy_id("What are the exclusions?") is None
 
 
 def test_sources_render_inline_without_chainlit_file_elements() -> None:
@@ -42,8 +46,24 @@ def test_sources_render_inline_without_chainlit_file_elements() -> None:
 
     assert "### Fuentes consultadas" in rendered
     assert "**Fuente 1:** POL1.pdf - Página 4" in rendered
-    assert "**Fuente 2:** [Web] Regulator — https://example.com" in rendered
+    assert "**Web 1:** [Regulator](https://example.com)" in rendered
     assert _format_sources([]) == ""
+
+
+def test_sources_group_web_links_and_context_badges() -> None:
+    rendered = _format_sources(
+        ["POL1.pdf - Página 4", "[Web] Regulator — https://example.com"]
+    )
+    context = _format_response_context(
+        {"route": "policies", "response_time_ms": 1250},
+        "auto",
+        "POL1",
+    )
+
+    assert "**Documentos**" in rendered
+    assert "[Regulator](https://example.com)" in rendered
+    assert "📚 Pólizas" in context
+    assert "1.2s" in context
 
 
 def test_ask_client_sends_mode_and_policy(monkeypatch) -> None:
@@ -112,3 +132,29 @@ def test_draft_client_parses_contract(monkeypatch) -> None:
 
     assert result.draft == "BORRADOR"
     assert result.disclaimer == "Review required"
+
+
+def test_stream_client_parses_sse_contract(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/ask/stream"
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text=(
+                'event: status\ndata: {"message":"Searching"}\n\n'
+                'event: token\ndata: {"text":"Hello"}\n\n'
+                'event: complete\ndata: {"sources":[],"metadata":{"route":"web"}}\n\n'
+            ),
+        )
+
+    async def collect_events():
+        return [
+            event
+            async for event in api_client.stream_question("question", None, "web")
+        ]
+
+    _mock_async_client(monkeypatch, handler)
+    events = asyncio.run(collect_events())
+
+    assert [event.event for event in events] == ["status", "token", "complete"]
+    assert events[1].data["text"] == "Hello"

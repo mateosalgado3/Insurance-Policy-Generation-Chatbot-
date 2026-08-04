@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .chainlit/
+!frontend/.chainlit/
+frontend/.chainlit/*
+!frontend/.chainlit/config.toml
 /chainlit.md
 .coverage
 htmlcov/

@@ -9,10 +9,11 @@
 | Policy Retrieval | Validated |
 | Combined Mode | Validated |
 | Draft Generation | Validated |
-| Web Mode | Partially validated |
+| Web Mode | Validated |
 | QA Evidence Package | Finalized |
 | Demo Runbook | Finalized |
-| Documented Functional Observations | `FE-WEB-001` |
+| Streaming Frontend | Validated |
+| Documented Functional Observations | No open blocker |
 
 ## Available
 
@@ -20,6 +21,7 @@
 - `GET /health`.
 - `GET /config`.
 - `POST /ask`.
+- `POST /ask/stream` with `status`, `token`, `complete`, and `error` SSE events.
 - API schemas and response contracts.
 - `RealRAGService`.
 - `FakeRAGService` used in tests through FastAPI `dependency_overrides`.
@@ -107,15 +109,21 @@ Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
 
 ## Frontend Web Flow Status
 
-- `FE-WEB-001` was executed from Chainlit.
-- The frontend web flow reached the backend and received HTTP 500.
-- The frontend displayed a controlled backend error message.
+- `FE-WEB-001` was reproduced and its root cause was corrected.
+- The exact original query now returns HTTP 200 with web sources.
+- Empty model output is handled as a degraded response instead of HTTP 500.
 - `FE-WEB-002` confirmed that a general web query can execute successfully.
 - `FE-COMB-001` confirmed that web retrieval can also execute successfully inside the `combined` flow.
-- Integration of the web route is partially validated.
-- The HTTP 500 observed in `FE-WEB-001` appears query-specific or result-specific, not a complete failure of web mode.
-- Root cause of the `FE-WEB-001` HTTP 500 was not investigated further within the completed QA scope.
-- The known `FE-WEB-001` query is excluded from the recommended live demo flow.
+- Integration of the web route is validated.
+
+## Streaming Frontend Validation
+
+- Chainlit consumes `POST /ask/stream` and progressively renders the answer.
+- The backend emits periodic progress events while retrieval and generation run.
+- Route chips update the active session and the settings sidebar consistently.
+- A policy identifier written directly in the question is used as a one-request retrieval filter.
+- The browser E2E check for `POL320190074` returned five sources and every source belonged to that policy.
+- `/ready` returns the RAG state without being sent through the LLM router.
 
 ## Manually Validated Combined Flow
 
