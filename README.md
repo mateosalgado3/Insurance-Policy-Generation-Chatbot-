@@ -137,6 +137,21 @@ La evaluación OpenAI de las 12 preguntas curadas:
 python scripts/evaluate_retrieval.py --provider openai --top-k 5
 ```
 
+Evaluación RAGAS de relevancia de respuesta y de chunks (usa OpenAI y genera
+consumo de API):
+
+```powershell
+uv sync --extra eval
+python scripts/evaluate_ragas.py --health-threshold 0.60
+```
+
+El reporte completo se guarda en `outputs/evaluation/ragas.json`. Para una prueba
+económica antes de evaluar los 12 casos se puede agregar `--limit 2`.
+
+Línea base validada con RAGAS 0.4.3: relevancia de respuesta `0.7053`, relevancia
+de contexto `0.9792` y promedio combinado `0.8422`; ambas métricas globales
+superan el umbral interno de `0.60`.
+
 Consulta [la arquitectura](docs/architecture.md), el
 [reporte de evaluación](docs/evaluation.md) y el
 [runbook de demo](docs/demo.md).

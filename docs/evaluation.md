@@ -41,3 +41,37 @@ como la consulta de códigos CIE-10. Para el MVP se mantiene
 
 Se recomienda revisar el umbral cuando existan al menos 50 preguntas
 etiquetadas, incluyendo consultas sin respuesta y preguntas adversariales.
+
+## Evaluación RAGAS
+
+El script `scripts/evaluate_ragas.py` ejecuta el RAG real sobre las mismas 12
+preguntas curadas y calcula dos métricas LLM-as-a-judge:
+
+- **Answer Relevancy:** alineación entre la respuesta generada y la pregunta.
+- **Context Relevance:** pertinencia de los chunks recuperados frente a la pregunta.
+
+Ambas se reportan de 0 a 1. El equipo adoptó `0.60` como umbral operativo inicial;
+es un criterio interno para el MVP, no un estándar universal de RAGAS. El JSON
+incluye promedios, mínimos, casos aprobados, fuentes, IDs y scores de retrieval.
+
+```powershell
+uv sync --extra eval
+python scripts/evaluate_ragas.py --health-threshold 0.60
+```
+
+La ejecución es secuencial para mantener predecible el consumo. `--limit 2`
+permite un smoke test y `--fail-below-threshold` habilita una futura compuerta CI.
+
+### Línea base del 6 de agosto de 2026
+
+| Métrica RAGAS | Promedio | Casos sobre 0.60 | Estado |
+|---|---:|---:|---|
+| Answer Relevancy | 0.7053 | 11/12 | Saludable |
+| Context Relevance | 0.9792 | 12/12 | Saludable |
+| Promedio combinado | 0.8422 | — | Saludable |
+
+La respuesta sobre `periodo_carencia` obtuvo `0.3922` de relevancia aunque sus
+contextos obtuvieron `1.0`. La respuesta contiene la información solicitada, pero
+es extensa y repetitiva; queda como caso objetivo para mejorar concisión sin
+debilitar citas ni fidelidad. La línea base compacta y versionada está en
+`data/evaluation/ragas_baseline.json`; el reporte completo permanece en `outputs/`.
