@@ -55,7 +55,14 @@ def test_sources_group_web_links_and_context_badges() -> None:
         ["POL1.pdf - Página 4", "[Web] Regulator — https://example.com"]
     )
     context = _format_response_context(
-        {"route": "policies", "response_time_ms": 1250},
+        {
+            "route": "policies",
+            "response_time_ms": 1250,
+            "latency_ms": {
+                "time_to_model_ms": 250,
+                "model_response_time_ms": 990,
+            },
+        },
         "auto",
         "POL1",
     )
@@ -64,6 +71,8 @@ def test_sources_group_web_links_and_context_badges() -> None:
     assert "[Regulator](https://example.com)" in rendered
     assert "📚 Pólizas" in context
     assert "1.2s" in context
+    assert "Hasta modelo" in context
+    assert "Modelo" in context
 
 
 def test_ask_client_sends_mode_and_policy(monkeypatch) -> None:

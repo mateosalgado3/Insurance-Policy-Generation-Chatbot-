@@ -56,6 +56,12 @@ class AskResponse(BaseModel):
                         "model": "gpt-4.1-mini",
                         "embedding_model": "text-embedding-3-small",
                         "response_time_ms": 850.4,
+                        "latency_ms": {
+                            "time_to_model_ms": 180.2,
+                            "model_response_time_ms": 668.7,
+                            "postprocessing_time_ms": 1.5,
+                            "total_time_ms": 850.4,
+                        },
                         "retrieved_chunks": 3,
                     },
                 }
@@ -122,7 +128,7 @@ class HealthResponse(BaseModel):
                 {
                     "status": "healthy",
                     "service": "Insurance Policy RAG API",
-                    "version": "0.4.0",
+                    "version": "0.5.0",
                 }
             ]
         }

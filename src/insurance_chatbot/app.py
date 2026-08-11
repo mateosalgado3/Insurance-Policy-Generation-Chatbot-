@@ -55,7 +55,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Insurance Policy RAG API",
-    version="0.4.0",
+    version="0.5.0",
     description=(
         "API agente para consultar pólizas QuePlan, buscar información actual "
         "del sector y crear borradores trazables para revisión humana."

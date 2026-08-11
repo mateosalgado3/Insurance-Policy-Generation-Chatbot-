@@ -79,9 +79,17 @@ def _format_response_context(
     labels = [f"**Ruta:** {MODE_LABELS.get(route, route)}"]
     if policy_id:
         labels.append(f"**Póliza:** `{policy_id}`")
+    latency = metadata.get("latency_ms")
+    if isinstance(latency, dict):
+        time_to_model = latency.get("time_to_model_ms")
+        model_response = latency.get("model_response_time_ms")
+        if isinstance(time_to_model, (int, float)):
+            labels.append(f"**Hasta modelo:** {time_to_model / 1000:.1f}s")
+        if isinstance(model_response, (int, float)):
+            labels.append(f"**Modelo:** {model_response / 1000:.1f}s")
     response_time = metadata.get("response_time_ms")
     if isinstance(response_time, (int, float)):
-        labels.append(f"**Tiempo:** {response_time / 1000:.1f}s")
+        labels.append(f"**Total:** {response_time / 1000:.1f}s")
     if metadata.get("degraded"):
         labels.append("**Estado:** respuesta web limitada")
     return "\n\n---\n" + " · ".join(labels)

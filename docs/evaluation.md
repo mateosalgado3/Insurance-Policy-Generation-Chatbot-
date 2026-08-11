@@ -75,3 +75,20 @@ contextos obtuvieron `1.0`. La respuesta contiene la información solicitada, pe
 es extensa y repetitiva; queda como caso objetivo para mejorar concisión sin
 debilitar citas ni fidelidad. La línea base compacta y versionada está en
 `data/evaluation/ragas_baseline.json`; el reporte completo permanece en `outputs/`.
+
+## Línea base de latencia
+
+`scripts/evaluate_latency.py` ejecuta las 12 preguntas en modo `policies` y usa
+la instrumentación incluida en cada respuesta. La corrida del 11 de agosto de
+2026, con top-k 5, produjo:
+
+| Fase | Media | P50 | P95 |
+|---|---:|---:|---:|
+| Hasta el modelo | 475.06 ms | 479.56 ms | 795.28 ms |
+| Respuesta de OpenAI | 4411.09 ms | 4416.54 ms | 6754.63 ms |
+| Pipeline backend | 4886.15 ms | 4936.60 ms | 7477.79 ms |
+
+La primera fase incluye embedding, Qdrant y prompt. La segunda incluye red y
+generación del proveedor. La línea base compacta está en
+`data/evaluation/latency_baseline.json`; se debe comparar p50 y p95 entre
+corridas equivalentes, no una sola consulta aislada.

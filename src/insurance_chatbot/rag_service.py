@@ -24,6 +24,27 @@ class IndexNotReadyError(RuntimeError):
     """Raised when the vector collection has not been populated yet."""
 
 
+def _milliseconds(start: float, end: float | None = None) -> float:
+    """Return a stable millisecond duration from perf-counter timestamps."""
+    finish = end if end is not None else time.perf_counter()
+    return round(max(0.0, finish - start) * 1000, 2)
+
+
+def _latency_breakdown(
+    query_started: float,
+    model_started: float,
+    model_completed: float,
+) -> dict[str, float]:
+    """Split one generated response into pre-model, model, and post-model time."""
+    completed = time.perf_counter()
+    return {
+        "time_to_model_ms": _milliseconds(query_started, model_started),
+        "model_response_time_ms": _milliseconds(model_started, model_completed),
+        "postprocessing_time_ms": _milliseconds(model_completed, completed),
+        "total_time_ms": _milliseconds(query_started, completed),
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class IndexStatus:
     ready: bool
@@ -264,17 +285,15 @@ class RealRAGService(AbstractRAGService):
         if not normalized_question:
             raise ValueError("question must not be empty")
 
-        start_time = time.perf_counter()
+        query_started = time.perf_counter()
         chunks = await self.retrieval_service.search(
             question=normalized_question,
             policy_id=policy_id,
             top_k=self.top_k,
         )
 
-        def elapsed_time_ms() -> float:
-            return round((time.perf_counter() - start_time) * 1000, 2)
-
         if not chunks:
+            total_time_ms = _milliseconds(query_started)
             return AskResponse(
                 answer=(
                     "No se encontró evidencia suficiente en las pólizas "
@@ -286,7 +305,13 @@ class RealRAGService(AbstractRAGService):
                     "embedding_model": getattr(
                         self.retrieval_service, "embedding_model", "unknown"
                     ),
-                    "response_time_ms": elapsed_time_ms(),
+                    "response_time_ms": total_time_ms,
+                    "latency_ms": {
+                        "time_to_model_ms": None,
+                        "model_response_time_ms": None,
+                        "postprocessing_time_ms": 0.0,
+                        "total_time_ms": total_time_ms,
+                    },
                     "policy_id": policy_id or "all",
                     "retrieved_chunks": 0,
                     "is_mock": False,
@@ -308,6 +333,7 @@ class RealRAGService(AbstractRAGService):
             context_parts.append(f"[Fuente {index}: {source_label}]\n{chunk.content}")
 
         context = "\n\n".join(context_parts)
+        model_started = time.perf_counter()
         response = await self.openai_client.responses.create(
             model=self.chat_model,
             instructions=(
@@ -324,17 +350,20 @@ class RealRAGService(AbstractRAGService):
                 f"Pregunta del usuario:\n{normalized_question}\n\nContexto recuperado:\n{context}"
             ),
         )
+        model_completed = time.perf_counter()
         answer = response.output_text.strip()
         if not answer:
             raise RuntimeError("OpenAI returned an empty RAG response")
 
+        latency_ms = _latency_breakdown(query_started, model_started, model_completed)
         return AskResponse(
             answer=answer,
             sources=list(dict.fromkeys(formatted_sources)),
             metadata={
                 "model": self.chat_model,
                 "embedding_model": getattr(self.retrieval_service, "embedding_model", "unknown"),
-                "response_time_ms": elapsed_time_ms(),
+                "response_time_ms": latency_ms["total_time_ms"],
+                "latency_ms": latency_ms,
                 "policy_id": policy_id or "all",
                 "retrieved_chunks": len(chunks),
                 "retrieval_scores": retrieval_scores,
@@ -405,7 +434,8 @@ class OpenAIWebSearchService:
         if not normalized_question:
             raise ValueError("question must not be empty")
 
-        start_time = time.perf_counter()
+        query_started = time.perf_counter()
+        model_started = time.perf_counter()
         response = await self.openai_client.responses.create(
             model=self.web_model,
             tools=[
@@ -429,6 +459,7 @@ class OpenAIWebSearchService:
             ),
             input=normalized_question,
         )
+        model_completed = time.perf_counter()
         answer = str(response.output_text or "").strip()
         sources = self._extract_sources(response)
         if not answer:
@@ -436,12 +467,14 @@ class OpenAIWebSearchService:
                 "No fue posible generar un resumen web en este momento. "
                 "Puedes revisar las fuentes recuperadas o volver a intentarlo."
             )
+        latency_ms = _latency_breakdown(query_started, model_started, model_completed)
         return AskResponse(
             answer=answer,
             sources=sources,
             metadata={
                 "model": self.web_model,
-                "response_time_ms": round((time.perf_counter() - start_time) * 1000, 2),
+                "response_time_ms": latency_ms["total_time_ms"],
+                "latency_ms": latency_ms,
                 "web_sources": len(sources),
                 "response_id": getattr(response, "id", None),
                 "degraded": not bool(response.output_text),
@@ -497,6 +530,7 @@ class AgenticRAGService(AbstractRAGService):
         return response.model_copy(update={"metadata": metadata})
 
     async def _combined(self, question: str, policy_id: str | None) -> AskResponse:
+        query_started = time.perf_counter()
         results = await asyncio.gather(
             self.policy_service.query(question, policy_id, QueryMode.POLICIES),
             self.web_service.query(question),
@@ -525,6 +559,12 @@ class AgenticRAGService(AbstractRAGService):
                 "\nNo fue posible completar una de las fuentes de información; "
                 "la respuesta muestra únicamente la evidencia disponible."
             )
+        total_time_ms = _milliseconds(query_started)
+        component_latency: dict[str, Any] = {}
+        if isinstance(policy_result, AskResponse):
+            component_latency["policies"] = policy_result.metadata.get("latency_ms", {})
+        if isinstance(web_result, AskResponse):
+            component_latency["web"] = web_result.metadata.get("latency_ms", {})
         return AskResponse(
             answer="\n\n".join(sections),
             sources=list(dict.fromkeys(sources)),
@@ -532,6 +572,11 @@ class AgenticRAGService(AbstractRAGService):
                 "model": f"{self.policy_service.chat_model}+{self.web_service.web_model}",
                 "route": QueryMode.COMBINED.value,
                 "component_errors": component_errors,
+                "response_time_ms": total_time_ms,
+                "latency_ms": {
+                    "total_time_ms": total_time_ms,
+                    "parallel_components": component_latency,
+                },
                 "is_mock": False,
             },
         )
@@ -708,13 +753,38 @@ class AgenticRAGService(AbstractRAGService):
         policy_id: str | None = None,
         mode: QueryMode | str = QueryMode.AUTO,
     ) -> AskResponse:
+        query_started = time.perf_counter()
         normalized_question = question.strip()
         if not normalized_question:
             raise ValueError("question must not be empty")
         selected_mode = QueryMode(mode)
         if selected_mode == QueryMode.AUTO:
-            return await self._agent_query(normalized_question, policy_id)
-        return await self._dispatch(selected_mode, normalized_question, policy_id)
+            response = await self._agent_query(normalized_question, policy_id)
+        else:
+            response = await self._dispatch(selected_mode, normalized_question, policy_id)
+
+        query_total_ms = _milliseconds(query_started)
+        route_latency = response.metadata.get("latency_ms")
+        route_total_ms = (
+            route_latency.get("total_time_ms")
+            if isinstance(route_latency, dict)
+            else None
+        )
+        agent_overhead_ms = (
+            round(max(0.0, query_total_ms - float(route_total_ms)), 2)
+            if isinstance(route_total_ms, (int, float))
+            else query_total_ms
+        )
+        return response.model_copy(
+            update={
+                "metadata": {
+                    **response.metadata,
+                    "response_time_ms": query_total_ms,
+                    "query_execution_time_ms": query_total_ms,
+                    "agent_overhead_time_ms": agent_overhead_ms,
+                }
+            }
+        )
 
 
 class PolicyDraftService:
@@ -738,6 +808,7 @@ class PolicyDraftService:
         instructions: str,
         source_policy_ids: list[str],
     ) -> PolicyDraftResponse:
+        query_started = time.perf_counter()
         policy_ids = list(dict.fromkeys(policy_id.strip() for policy_id in source_policy_ids))
         if not policy_ids or any(not policy_id for policy_id in policy_ids):
             raise ValueError("source_policy_ids must contain non-empty values")
@@ -766,6 +837,7 @@ class PolicyDraftService:
             context_parts.append(f"[Fuente {index}: {source}]\n{chunk.content}")
 
         context = "\n\n".join(context_parts)
+        model_started = time.perf_counter()
         response = await self.openai_client.responses.create(
             model=self.chat_model,
             instructions=(
@@ -781,9 +853,11 @@ class PolicyDraftService:
                 f"Evidencia:\n{context}"
             ),
         )
+        model_completed = time.perf_counter()
         draft = response.output_text.strip()
         if not draft:
             raise RuntimeError("OpenAI returned an empty policy draft")
+        latency_ms = _latency_breakdown(query_started, model_started, model_completed)
         return PolicyDraftResponse(
             draft=draft,
             sources=list(dict.fromkeys(sources)),
@@ -792,6 +866,8 @@ class PolicyDraftService:
                 "source_policy_ids": policy_ids,
                 "retrieved_chunks": len(chunks),
                 "response_id": getattr(response, "id", None),
+                "response_time_ms": latency_ms["total_time_ms"],
+                "latency_ms": latency_ms,
                 "is_mock": False,
             },
         )

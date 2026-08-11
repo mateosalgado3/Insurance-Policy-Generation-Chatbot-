@@ -154,6 +154,9 @@ def test_real_rag_generates_grounded_response_and_citations() -> None:
     assert response.sources == ["POL320190074.pdf - Página 20 - Artículo 12"]
     assert response.metadata["retrieval_scores"] == [0.91]
     assert response.metadata["retrieved_chunks"] == 1
+    assert response.metadata["latency_ms"]["time_to_model_ms"] >= 0
+    assert response.metadata["latency_ms"]["model_response_time_ms"] >= 0
+    assert response.metadata["latency_ms"]["total_time_ms"] >= 0
     assert "[Fuente 1" in openai_client.responses.calls[0]["input"]
 
 

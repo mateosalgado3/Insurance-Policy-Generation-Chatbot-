@@ -19,7 +19,7 @@ def test_health_endpoint_is_liveness_only() -> None:
     assert response.json() == {
         "status": "healthy",
         "service": "Insurance Policy RAG API",
-        "version": "0.4.0",
+        "version": "0.5.0",
     }
 
 
