@@ -1,0 +1,13 @@
+{
+    "detail": [
+        {
+            "type": "string_type",
+            "loc": [
+                "body",
+                "question"
+            ],
+            "msg": "Input should be a valid string",
+            "input": 320190074
+        }
+    ]
+}

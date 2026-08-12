@@ -1,0 +1,17 @@
+{
+    "llm_model": "gpt-4.1-mini",
+    "router_model": "gpt-4.1-mini",
+    "web_model": "gpt-5.6-luna",
+    "embedding_model": "text-embedding-3-small",
+    "vector_store": "Qdrant (local persistent)",
+    "collection": "queplan_policies",
+    "top_k": 5,
+    "score_threshold": null,
+    "openai_configured": true,
+    "available_modes": [
+        "auto",
+        "policies",
+        "web",
+        "combined"
+    ]
+}
