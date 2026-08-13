@@ -29,7 +29,9 @@ dev = [
   "chainlit>=2.11,<3",
   "httpx>=0.28,<1",
   "pytest>=8,<10",
-  "ruff>=0.11,<1",
+  # Keep CI and local linting deterministic. Ruff 0.16 changed its default
+  # rule selection, so an open-ended range made clean commits fail overnight.
+  "ruff==0.15.22",
 ]
 eval = [
   # Ragas 0.4.3 still imports the VertexAI compatibility module removed in 0.4.2.
