@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from fastapi.testclient import TestClient
 
 import insurance_chatbot.app as app_module
@@ -38,6 +40,11 @@ def test_readiness_reports_dependencies(monkeypatch) -> None:
         async def index_status(self) -> IndexStatus:
             return IndexStatus(ready=True, points_count=42)
 
+    # Readiness requires both the vector index and OpenAI configuration. Make
+    # that dependency explicit so the test does not pass only because a
+    # developer happens to have a local .env file (GitHub Actions does not).
+    configured_settings = replace(app_module.get_settings(), openai_api_key="test-key")
+    monkeypatch.setattr(app_module, "get_settings", lambda: configured_settings)
     monkeypatch.setattr(app_module, "get_retrieval_service", lambda: ReadyRetrieval())
     response = client.get("/ready")
     assert response.status_code == 200
