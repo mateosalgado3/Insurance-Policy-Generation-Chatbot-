@@ -1,0 +1,33 @@
+{
+  "framework": "ragas",
+  "ragas_version": "0.4.3",
+  "generated_at": "2026-08-07T00:30:10.106727+00:00",
+  "generator_model": "gpt-4.1-mini",
+  "evaluator_model": "gpt-4.1-mini",
+  "embedding_model": "text-embedding-3-small",
+  "top_k": 5,
+  "health_threshold": 0.6,
+  "summary": {
+    "cases": 12,
+    "answer_relevancy_mean": 0.7053,
+    "answer_relevancy_passing_cases": 11,
+    "context_relevance_mean": 0.9792,
+    "context_relevance_passing_cases": 12,
+    "overall_mean": 0.8422,
+    "healthy": true
+  },
+  "cases": [
+    {"id": "hospitalizacion_accidente", "answer_relevancy": 0.7736, "context_relevance": 1.0},
+    {"id": "cirugia_lasik", "answer_relevancy": 0.8194, "context_relevance": 1.0},
+    {"id": "cirugia_ambulatoria", "answer_relevancy": 0.71, "context_relevance": 0.75},
+    {"id": "monto_maximo", "answer_relevancy": 0.6093, "context_relevance": 1.0},
+    {"id": "exclusiones_embarazo", "answer_relevancy": 0.7294, "context_relevance": 1.0},
+    {"id": "periodo_carencia", "answer_relevancy": 0.3922, "context_relevance": 1.0},
+    {"id": "seguro_catastrofico", "answer_relevancy": 0.7306, "context_relevance": 1.0},
+    {"id": "deducible_familiar", "answer_relevancy": 0.6314, "context_relevance": 1.0},
+    {"id": "complicaciones_recien_nacido", "answer_relevancy": 0.7922, "context_relevance": 1.0},
+    {"id": "indemnizacion_covid", "answer_relevancy": 0.733, "context_relevance": 1.0},
+    {"id": "codigos_covid", "answer_relevancy": 0.8863, "context_relevance": 1.0},
+    {"id": "exclusiones_poliza_2021", "answer_relevancy": 0.6559, "context_relevance": 1.0}
+  ]
+}

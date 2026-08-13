@@ -1,0 +1,36 @@
+{
+    "answer": "El per\u00edodo de carencia se define como un lapso durante el cual el asegurado paga primas pero no recibe la cobertura prevista en la p\u00f3liza de seguros. \n\n### \u00bfDesde cu\u00e1ndo se cuenta este per\u00edodo?\n- Comienza desde la fecha de inicio de la vigencia individual del asegurado en la p\u00f3liza o\n- Desde la fecha de inicio de la vigencia general de la p\u00f3liza o\n- Desde la incorporaci\u00f3n del asegurado a la p\u00f3liza,\n\nseg\u00fan corresponda y lo que est\u00e9 determinado y especificado en las Condiciones Particulares de la p\u00f3liza.\n\n### Caracter\u00edsticas del per\u00edodo de carencia\n- El periodo se extiende hasta una fecha posterior especificada en las Condiciones Particulares.\n- Durante este per\u00edodo, si ocurre un siniestro (por ejemplo, fallecimiento), la cobertura no operar\u00e1 para dicho evento.\n- Es obligatorio que quede expresamente especificado en las Condiciones Particulares de la p\u00f3liza.\n- En algunos casos, pueden establecerse periodos diferenciados de carencia para distintas coberturas o enfermedades.\n\nEstas definiciones y condiciones est\u00e1n descritas en los ART\u00cdCULOS 3\u00ba y 5\u00ba de la p\u00f3liza, especialmente en las p\u00e1ginas 7, 13, 34 y 65 del documento referenciado [Fuente 1, 2, 3 y 4].",
+    "sources": [
+        "POL320190074.pdf - P\u00e1gina 7 - ARTICULO 5\u00ba",
+        "POL320190074.pdf - P\u00e1gina 13 - ART\u00cdCULO N\u00b0 3",
+        "POL320190074.pdf - P\u00e1gina 65 - ART\u00cdCULO N\u00b0 3",
+        "POL320190074.pdf - P\u00e1gina 34 - ART\u00cdCULO N\u00b0 3",
+        "POL320190074.pdf - P\u00e1gina 71 - ARTICULO 4\u00ba"
+    ],
+    "metadata": {
+        "model": "gpt-4.1-mini",
+        "embedding_model": "text-embedding-3-small",
+        "response_time_ms": 8185.32,
+        "latency_ms": {
+            "time_to_model_ms": 1238.17,
+            "model_response_time_ms": 6946.75,
+            "postprocessing_time_ms": 0.05,
+            "total_time_ms": 8184.98
+        },
+        "policy_id": "POL320190074",
+        "retrieved_chunks": 5,
+        "retrieval_scores": [
+            0.5774,
+            0.5573,
+            0.5573,
+            0.4366,
+            0.4153
+        ],
+        "response_id": "resp_0885cbe31090d471006a7cdc207a3c8197a0b7b9510f7ad28a",
+        "route": "policies",
+        "is_mock": false,
+        "router": "explicit",
+        "query_execution_time_ms": 8185.32,
+        "agent_overhead_time_ms": 0.34
+    }
+}

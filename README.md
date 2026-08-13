@@ -10,10 +10,102 @@ con información web reciente y generar borradores trazables para revisión huma
 - RAG de pólizas con `gpt-4.1-mini`, citas por archivo, página y artículo.
 - Agente LangChain con rutas `policies`, `web`, `combined` y fuera de alcance.
 - Web search mediante OpenAI Responses API y `gpt-5.6-luna`.
-- FastAPI con `/ask`, `/generate-policy`, `/config`, `/health` y `/ready`.
-- Frontend Chainlit con selector de ruta, filtro de póliza y generación de borradores.
+- FastAPI con `/ask`, `/ask/stream`, `/generate-policy`, `/config`, `/health` y `/ready`.
+- Frontend Chainlit con chips de ruta, filtro automático/manual por póliza, streaming y generación de borradores.
 - API y frontend empaquetados con Docker Compose.
 - Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
+- RAGAS: Answer Relevancy 0.7053 y Context Relevance 0.9792.
+- Latencia de pólizas instrumentada desde retrieval hasta respuesta del modelo.
+
+## Modelo de arquitectura C4
+
+El sistema se documenta en tres niveles C4. El **contexto** explica quién usa el
+sistema y sus dependencias; los **contenedores** muestran las unidades
+desplegables; y los **componentes** detallan cómo FastAPI ejecuta cada consulta.
+
+### Nivel 1 — Contexto del sistema
+
+```mermaid
+flowchart LR
+    user["Persona: usuario de seguros<br/>Consulta pólizas, noticias y borradores"]
+    team["Persona: equipo del proyecto<br/>Ingesta, evaluación, QA y operación"]
+    system["Software System: Seguros AI<br/>Asistente RAG trazable para pólizas QuePlan"]
+    s3["External System: Anyone AI S3<br/>Corpus fuente de 9 PDF"]
+    openai["External System: OpenAI API<br/>Embeddings, router, generación y web search"]
+    web["External System: Web pública<br/>Reguladores, noticias y fuentes actuales"]
+
+    user -->|"Pregunta y revisa fuentes"| system
+    team -->|"Prepara datos, evalúa y despliega"| system
+    system -->|"Descarga controlada durante ingesta"| s3
+    system -->|"HTTPS: modelos y herramientas"| openai
+    openai -->|"Consulta mediante web_search"| web
+
+    classDef person fill:#dbeafe,stroke:#2563eb,color:#0f172a;
+    classDef software fill:#ccfbf1,stroke:#0f766e,color:#0f172a;
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#0f172a;
+    class user,team person;
+    class system software;
+    class s3,openai,web external;
+```
+
+### Nivel 2 — Contenedores
+
+```mermaid
+flowchart LR
+    user["Usuario"]
+    openai["OpenAI API"]
+    s3["Anyone AI S3"]
+
+    subgraph seguros["Software System: Seguros AI"]
+        ui["Container: Chainlit :8001<br/>Chat, chips, SSE y fuentes"]
+        api["Container: FastAPI :8000<br/>Contratos, agente y errores seguros"]
+        qdrant[("Container: Qdrant embebido<br/>262 vectores persistentes")]
+        batch["Container lógico: scripts Python<br/>EDA, ingesta, retrieval, RAGAS y latencia"]
+        artifacts[("Archivos versionados<br/>JSONL, preguntas y líneas base")]
+    end
+
+    user -->|"HTTP"| ui
+    ui -->|"REST + SSE"| api
+    api -->|"Búsqueda vectorial"| qdrant
+    api -->|"HTTPS"| openai
+    batch -->|"Descarga PDF"| s3
+    batch -->|"Embeddings y evaluación"| openai
+    batch -->|"Construye/consulta"| qdrant
+    batch -->|"Lee/escribe"| artifacts
+
+    classDef container fill:#ccfbf1,stroke:#0f766e,color:#0f172a;
+    classDef external fill:#f1f5f9,stroke:#64748b,color:#0f172a;
+    class ui,api,qdrant,batch,artifacts container;
+    class user,openai,s3 external;
+```
+
+### Nivel 3 — Componentes del backend
+
+```mermaid
+flowchart TB
+    ui["Chainlit"] --> endpoints["FastAPI endpoints<br/>/ask · /ask/stream · /generate-policy"]
+    endpoints --> agent["AgenticRAGService<br/>auto · policies · web · combined"]
+    agent --> router["Router LangChain<br/>selección de herramienta"]
+    agent --> policy["RealRAGService<br/>respuesta contractual con citas"]
+    agent --> current["OpenAIWebSearchService<br/>información reciente con URL"]
+    agent --> combined["Combined route<br/>pólizas y web en paralelo"]
+    endpoints --> draft["PolicyDraftService<br/>borrador para revisión humana"]
+    policy --> retrieval["RealRetrievalService<br/>embedding de query, filtro y top-k"]
+    draft --> retrieval
+    retrieval --> qdrant[("Qdrant")]
+    router --> openai["OpenAI API"]
+    policy --> openai
+    current --> openai
+    draft --> openai
+    policy --> timing["Latency instrumentation<br/>hasta modelo · modelo · total"]
+    current --> timing
+    combined --> timing
+    timing --> metadata["AskResponse.metadata<br/>fuentes, ruta, scores y tiempos"]
+    metadata --> endpoints
+```
+
+Las decisiones, límites y flujo detallado se mantienen en
+[`docs/architecture.md`](docs/architecture.md).
 
 ## Inicio rápido con Docker
 
@@ -89,7 +181,13 @@ Comandos de Chainlit:
 /policy clear
 /draft POL320200071,POL320150503 | Combine las cláusulas de cobertura
 /config
+/ready
+/help
 ```
+
+El frontend consume `POST /ask/stream` mediante Server-Sent Events. Muestra el
+estado de la consulta mientras el backend trabaja y renderiza progresivamente la
+respuesta, sin alterar el contrato JSON estable de `POST /ask`.
 
 Los modos explícitos evitan la llamada del router y son útiles para una demo
 determinista. Web search y generación consumen OpenAI API.
@@ -131,6 +229,38 @@ La evaluación OpenAI de las 12 preguntas curadas:
 python scripts/evaluate_retrieval.py --provider openai --top-k 5
 ```
 
+Evaluación RAGAS de relevancia de respuesta y de chunks (usa OpenAI y genera
+consumo de API):
+
+```powershell
+uv sync --extra eval
+python scripts/evaluate_ragas.py --health-threshold 0.60
+```
+
+El reporte completo se guarda en `outputs/evaluation/ragas.json`. Para una prueba
+económica antes de evaluar los 12 casos se puede agregar `--limit 2`.
+
+Línea base validada con RAGAS 0.4.3: relevancia de respuesta `0.7053`, relevancia
+de contexto `0.9792` y promedio combinado `0.8422`; ambas métricas globales
+superan el umbral interno de `0.60`.
+
+Benchmark de latencia sobre las mismas 12 consultas de pólizas:
+
+```powershell
+python scripts/evaluate_latency.py
+```
+
+| Métrica | Media | P50 | P95 |
+|---|---:|---:|---:|
+| Hasta enviar al modelo | 475 ms | 480 ms | 795 ms |
+| Respuesta del modelo | 4.411 s | 4.417 s | 6.755 s |
+| Pipeline completo | 4.886 s | 4.937 s | 7.478 s |
+
+El reporte completo queda en `outputs/evaluation/latency.json` y la línea base
+compacta está versionada en `data/evaluation/latency_baseline.json`. Los tiempos
+dependen de red, carga del proveedor y equipo; son una referencia, no un SLA.
+
 Consulta [la arquitectura](docs/architecture.md), el
 [reporte de evaluación](docs/evaluation.md) y el
-[runbook de demo](docs/demo.md).
+[runbook de demo](docs/demo.md). El reparto final, entregables y criterios de
+aceptación están en el [plan de cierre del equipo](docs/team-closeout.md).

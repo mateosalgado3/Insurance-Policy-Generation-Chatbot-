@@ -1,5 +1,9 @@
 # Arquitectura del asistente de pólizas
 
+El modelo C4 canónico —contexto, contenedores y componentes— se encuentra en el
+[`README.md`](../README.md#modelo-de-arquitectura-c4). Este documento amplía las
+decisiones de diseño y el comportamiento en ejecución.
+
 ## Vista completa
 
 ```mermaid
@@ -15,7 +19,7 @@ flowchart LR
 
     subgraph runtime["Aplicación"]
         user["Usuario"] --> ui["Chainlit :8001"]
-        ui --> api["FastAPI :8000"]
+        ui -->|"POST /ask/stream · SSE"| api["FastAPI :8000"]
         api --> agent{"Agente LangChain"}
         agent -->|policies| queryEmb["Embedding de consulta"]
         queryEmb --> qdrant
@@ -29,7 +33,9 @@ flowchart LR
         decline --> response
         api -->|/generate-policy| draft["Borrador trazable"]
         qdrant --> draft
-        response --> ui
+        response --> timing["Latencia: hasta modelo + modelo + total"]
+        timing --> stream["status + token + complete"]
+        stream --> ui
         draft --> ui
     end
 ```
@@ -48,6 +54,10 @@ flowchart LR
    `url_citation` y de las acciones de web search.
 6. **Los borradores no son documentos finales.** Solo recombinan evidencia y
    siempre exigen revisión humana especializada.
+7. **La conversación usa SSE.** FastAPI envía estados periódicos y luego
+   fragmentos de la respuesta; Chainlit los renderiza progresivamente.
+8. **La latencia es trazable por consulta.** Se mide con reloj monotónico y se
+   separa preparación/retrieval, llamada al modelo, postprocesamiento y total.
 
 ## Componentes
 
@@ -61,7 +71,8 @@ flowchart LR
 | Agente | selección de herramienta y fallback | `AgenticRAGService` |
 | Generación | borrador desde 1–3 pólizas | `PolicyDraftService` |
 | API | contratos, readiness y errores seguros | `app.py`, `schemas.py` |
-| UI | sesión, modos, fuentes y comandos | `frontend/` |
+| UI | chips, sesión, modos, streaming, fuentes y comandos | `frontend/` |
+| Observabilidad | desglose de latencia por query y benchmark p50/p95 | `rag_service.py`, `evaluate_latency.py` |
 | Operación | dos contenedores y healthchecks | `compose.yaml` |
 
 ## Flujo de consulta
@@ -71,7 +82,13 @@ flowchart LR
 3. `policies` consulta Qdrant y genera solo con los chunks recuperados.
 4. `web` usa la herramienta alojada de OpenAI para información actual.
 5. `combined` ejecuta ambas rutas y conserva separadas sus evidencias.
-6. FastAPI devuelve `answer`, `sources` y `metadata`, incluyendo la ruta.
+6. FastAPI conserva el contrato JSON de `/ask`; `/ask/stream` lo transporta
+   como eventos SSE `status`, `token`, `complete` o `error`.
+7. Chainlit muestra progreso, anima la espera y agrega fuentes y metadatos al
+   terminar. Si la pregunta contiene un ID `POL...`, lo usa como filtro solo
+   para esa consulta.
+8. En las rutas generativas, `metadata.latency_ms` permite diferenciar el tiempo
+   previo al modelo, la espera de OpenAI y el total del backend.
 
 Si LangChain no puede enrutar por timeout o error transitorio, un fallback
 determinista selecciona la ruta mediante intención y vocabulario del dominio.
@@ -87,6 +104,24 @@ chunk_id + embedding_model + index_version
 
 Por eso una ejecución normal sobre el snapshot devuelve 262 chunks reutilizados,
 0 chunks indexados y 0 batches de embeddings.
+
+## Latencia y observabilidad
+
+Para `policies`, `web` y borradores se publican estas mediciones:
+
+| Campo | Definición |
+|---|---|
+| `time_to_model_ms` | Validación, embedding de la consulta, Qdrant y construcción del prompt antes de llamar al modelo. |
+| `model_response_time_ms` | Duración de la solicitud a OpenAI, incluyendo red, procesamiento y generación. |
+| `postprocessing_time_ms` | Extracción de texto, fuentes y construcción de metadata. |
+| `total_time_ms` | Tiempo completo dentro del servicio de la ruta. |
+| `query_execution_time_ms` | Tiempo exterior del agente, incluyendo router cuando se usa `auto`. |
+
+`combined` ejecuta pólizas y web en paralelo y conserva el desglose de ambos
+componentes. Chainlit muestra hasta-modelo, modelo y total cuando la ruta los
+expone. `scripts/evaluate_latency.py` calcula media, p50, p95, mínimo y máximo
+sobre las preguntas curadas. Estas cifras observan el cliente; no representan
+tiempo puro de cómputo interno de OpenAI ni constituyen un SLA.
 
 ## Despliegue
 

@@ -127,6 +127,23 @@ def test_web_search_extracts_url_citations_and_uses_current_tool() -> None:
     call = client.responses.calls[0]
     assert call["tools"] == [{"type": "web_search", "search_context_size": "low"}]
     assert call["include"] == ["web_search_call.action.sources"]
+    assert call["reasoning"] == {"effort": "low"}
+    assert call["text"] == {"verbosity": "low"}
+    assert call["max_output_tokens"] == 2000
+
+
+def test_web_search_empty_output_returns_degraded_response() -> None:
+    response = SimpleNamespace(id="resp-empty", output_text="", output=[])
+    service = OpenAIWebSearchService(
+        openai_client=FakeOpenAI(response),  # type: ignore[arg-type]
+        web_model="web-model",
+    )
+
+    result = asyncio.run(service.query("Recent insurance regulation"))
+
+    assert "No fue posible" in result.answer
+    assert result.metadata["degraded"] is True
+    assert result.metadata["route"] == "web"
 
 
 def test_agent_route_returns_tool_contract() -> None:

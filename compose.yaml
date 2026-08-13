@@ -28,6 +28,7 @@ services:
       API_BASE_URL: http://api:8000
       ASK_TIMEOUT_SECONDS: ${ASK_TIMEOUT_SECONDS:-90}
       STATUS_TIMEOUT_SECONDS: ${STATUS_TIMEOUT_SECONDS:-5}
+      STREAM_RENDER_DELAY_SECONDS: ${STREAM_RENDER_DELAY_SECONDS:-0.006}
     depends_on:
       api:
         condition: service_healthy

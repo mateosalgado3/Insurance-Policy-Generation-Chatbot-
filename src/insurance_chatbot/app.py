@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import AsyncIterator
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 from qdrant_client import QdrantClient
 
@@ -31,6 +36,9 @@ from insurance_chatbot.schemas import (
 from insurance_chatbot.settings import Settings
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Release persistent clients cleanly when the API stops."""
@@ -47,7 +55,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Insurance Policy RAG API",
-    version="0.3.0",
+    version="0.5.0",
     description=(
         "API agente para consultar pólizas QuePlan, buscar información actual "
         "del sector y crear borradores trazables para revisión humana."
@@ -122,6 +130,49 @@ def get_rag_service() -> AbstractRAGService:
         ) from exc
 
 
+def _public_error(exc: Exception) -> tuple[int, str]:
+    """Map internal failures to stable, non-sensitive API errors."""
+    if isinstance(exc, ValueError):
+        return status.HTTP_400_BAD_REQUEST, f"Parámetros de consulta no válidos: {exc}"
+    if isinstance(exc, IndexNotReadyError):
+        return status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)
+    if isinstance(exc, (TimeoutError, APITimeoutError)):
+        return (
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            "El servicio externo tardó demasiado en responder.",
+        )
+    if isinstance(exc, RateLimitError):
+        return (
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "OpenAI rechazó temporalmente la solicitud por límite de uso.",
+        )
+    if isinstance(exc, APIConnectionError):
+        return status.HTTP_502_BAD_GATEWAY, "No fue posible conectar con OpenAI."
+    return (
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "Error interno al procesar la solicitud en el motor RAG.",
+    )
+
+
+def _sse(event: str, data: dict[str, object]) -> str:
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _answer_chunks(answer: str, size: int = 24) -> list[str]:
+    return [answer[start : start + size] for start in range(0, len(answer), size)]
+
+
+def _progress_message(mode: str) -> str:
+    messages = {
+        "auto": "Analizando la consulta y seleccionando la mejor ruta…",
+        "policies": "Buscando evidencia en las pólizas indexadas…",
+        "web": "Consultando fuentes web verificables…",
+        "combined": "Consultando pólizas y fuentes web en paralelo…",
+    }
+    return messages.get(mode, messages["auto"])
+
+
 @app.post(
     "/ask",
     response_model=AskResponse,
@@ -142,36 +193,102 @@ async def ask_question(
             policy_id=payload.policy_id,
             mode=payload.mode,
         )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Parámetros de consulta no válidos: {exc}",
-        ) from exc
-    except IndexNotReadyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except (TimeoutError, APITimeoutError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="El servicio externo tardó demasiado en responder.",
-        ) from exc
-    except RateLimitError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="OpenAI rechazó temporalmente la solicitud por límite de uso.",
-        ) from exc
-    except APIConnectionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="No fue posible conectar con OpenAI.",
-        ) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al procesar la solicitud en el motor RAG.",
-        ) from exc
+        status_code, detail = _public_error(exc)
+        if status_code >= 500:
+            logger.exception("RAG request failed", extra={"mode": payload.mode.value})
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+@app.post(
+    "/ask/stream",
+    response_class=StreamingResponse,
+    summary="Consultar el RAG con progreso y respuesta por SSE",
+    description=(
+        "Emite eventos status, token, complete o error usando Server-Sent Events. "
+        "El contrato estable de POST /ask se conserva para otros clientes."
+    ),
+)
+async def ask_question_stream(
+    payload: AskRequest,
+    rag_service: AbstractRAGService = Depends(get_rag_service),
+) -> StreamingResponse:
+    request_id = str(uuid4())
+
+    async def event_stream() -> AsyncIterator[str]:
+        yield _sse(
+            "status",
+            {"request_id": request_id, "message": _progress_message(payload.mode.value)},
+        )
+        query_task = asyncio.create_task(
+            rag_service.query(
+                question=payload.question,
+                policy_id=payload.policy_id,
+                mode=payload.mode,
+            )
+        )
+        try:
+            elapsed_seconds = 0
+            while not query_task.done():
+                done, _ = await asyncio.wait({query_task}, timeout=1)
+                if done:
+                    break
+                elapsed_seconds += 1
+                yield _sse(
+                    "status",
+                    {
+                        "request_id": request_id,
+                        "message": (
+                            f"{_progress_message(payload.mode.value)} "
+                            f"{elapsed_seconds}s"
+                        ),
+                    },
+                )
+            result = query_task.result()
+        except asyncio.CancelledError:
+            query_task.cancel()
+            raise
+        except Exception as exc:
+            status_code, detail = _public_error(exc)
+            if status_code >= 500:
+                logger.exception(
+                    "Streaming RAG request failed",
+                    extra={"mode": payload.mode.value, "request_id": request_id},
+                )
+            yield _sse(
+                "error",
+                {
+                    "request_id": request_id,
+                    "status_code": status_code,
+                    "detail": detail,
+                },
+            )
+            return
+
+        yield _sse(
+            "status",
+            {"request_id": request_id, "message": "Preparando respuesta y fuentes…"},
+        )
+        for chunk in _answer_chunks(result.answer):
+            yield _sse("token", {"request_id": request_id, "text": chunk})
+        yield _sse(
+            "complete",
+            {
+                "request_id": request_id,
+                "sources": result.sources,
+                "metadata": result.metadata,
+            },
+        )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post(
@@ -216,6 +333,7 @@ async def generate_policy_draft(payload: PolicyDraftRequest) -> PolicyDraftRespo
             detail="No fue posible conectar con OpenAI.",
         ) from exc
     except Exception as exc:
+        logger.exception("Policy draft generation failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al generar el borrador de póliza.",

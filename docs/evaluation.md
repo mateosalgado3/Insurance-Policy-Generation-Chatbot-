@@ -41,3 +41,54 @@ como la consulta de códigos CIE-10. Para el MVP se mantiene
 
 Se recomienda revisar el umbral cuando existan al menos 50 preguntas
 etiquetadas, incluyendo consultas sin respuesta y preguntas adversariales.
+
+## Evaluación RAGAS
+
+El script `scripts/evaluate_ragas.py` ejecuta el RAG real sobre las mismas 12
+preguntas curadas y calcula dos métricas LLM-as-a-judge:
+
+- **Answer Relevancy:** alineación entre la respuesta generada y la pregunta.
+- **Context Relevance:** pertinencia de los chunks recuperados frente a la pregunta.
+
+Ambas se reportan de 0 a 1. El equipo adoptó `0.60` como umbral operativo inicial;
+es un criterio interno para el MVP, no un estándar universal de RAGAS. El JSON
+incluye promedios, mínimos, casos aprobados, fuentes, IDs y scores de retrieval.
+
+```powershell
+uv sync --extra eval
+python scripts/evaluate_ragas.py --health-threshold 0.60
+```
+
+La ejecución es secuencial para mantener predecible el consumo. `--limit 2`
+permite un smoke test y `--fail-below-threshold` habilita una futura compuerta CI.
+
+### Línea base del 6 de agosto de 2026
+
+| Métrica RAGAS | Promedio | Casos sobre 0.60 | Estado |
+|---|---:|---:|---|
+| Answer Relevancy | 0.7053 | 11/12 | Saludable |
+| Context Relevance | 0.9792 | 12/12 | Saludable |
+| Promedio combinado | 0.8422 | — | Saludable |
+
+La respuesta sobre `periodo_carencia` obtuvo `0.3922` de relevancia aunque sus
+contextos obtuvieron `1.0`. La respuesta contiene la información solicitada, pero
+es extensa y repetitiva; queda como caso objetivo para mejorar concisión sin
+debilitar citas ni fidelidad. La línea base compacta y versionada está en
+`data/evaluation/ragas_baseline.json`; el reporte completo permanece en `outputs/`.
+
+## Línea base de latencia
+
+`scripts/evaluate_latency.py` ejecuta las 12 preguntas en modo `policies` y usa
+la instrumentación incluida en cada respuesta. La corrida del 11 de agosto de
+2026, con top-k 5, produjo:
+
+| Fase | Media | P50 | P95 |
+|---|---:|---:|---:|
+| Hasta el modelo | 475.06 ms | 479.56 ms | 795.28 ms |
+| Respuesta de OpenAI | 4411.09 ms | 4416.54 ms | 6754.63 ms |
+| Pipeline backend | 4886.15 ms | 4936.60 ms | 7477.79 ms |
+
+La primera fase incluye embedding, Qdrant y prompt. La segunda incluye red y
+generación del proveedor. La línea base compacta está en
+`data/evaluation/latency_baseline.json`; se debe comparar p50 y p95 entre
+corridas equivalentes, no una sola consulta aislada.

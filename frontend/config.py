@@ -14,6 +14,7 @@ load_dotenv()
 
 API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 ASK_ENDPOINT: str = f"{API_BASE_URL}/ask"
+ASK_STREAM_ENDPOINT: str = f"{API_BASE_URL}/ask/stream"
 DRAFT_ENDPOINT: str = f"{API_BASE_URL}/generate-policy"
 
 # /health only reports process liveness. /ready reports whether the RAG can
@@ -28,3 +29,9 @@ ASK_TIMEOUT_SECONDS: float = float(os.getenv("ASK_TIMEOUT_SECONDS", "30"))
 
 # Timeout for the /ready and /config checks, expected to respond quickly.
 STATUS_TIMEOUT_SECONDS: float = float(os.getenv("STATUS_TIMEOUT_SECONDS", "5"))
+
+# Small delay between rendered SSE chunks. It creates a readable progressive
+# response without materially increasing total latency.
+STREAM_RENDER_DELAY_SECONDS: float = float(
+    os.getenv("STREAM_RENDER_DELAY_SECONDS", "0.006")
+)

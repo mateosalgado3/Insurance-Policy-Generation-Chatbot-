@@ -8,8 +8,9 @@ __pycache__/
 .venv/
 venv/
 
-# Chainlit local state and cache
-.chainlit/
+# Chainlit local state and cache (the UI config is versioned)
+.chainlit/*
+!.chainlit/config.toml
 .files/
 chainlit.db
 

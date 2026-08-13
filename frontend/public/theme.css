@@ -1,0 +1,67 @@
+:root {
+  --insurance-navy: #0b1f3a;
+  --insurance-teal: #0f766e;
+  --insurance-mint: #2dd4bf;
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% 4%, rgb(45 212 191 / 10%), transparent 28rem),
+    radial-gradient(circle at 92% 12%, rgb(37 99 235 / 8%), transparent 30rem);
+}
+
+button,
+textarea,
+input,
+[role="button"] {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+button:hover,
+[role="button"]:hover {
+  transform: translateY(-1px);
+}
+
+.MuiButton-root {
+  border-radius: 999px !important;
+  text-transform: none !important;
+  font-weight: 650 !important;
+}
+
+.MuiPaper-root {
+  border-color: rgb(15 118 110 / 16%) !important;
+}
+
+textarea:focus,
+input:focus {
+  border-color: var(--insurance-teal) !important;
+  box-shadow: 0 0 0 3px rgb(45 212 191 / 14%);
+}
+
+a {
+  color: var(--insurance-teal);
+  text-underline-offset: 3px;
+}
+
+table {
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+@keyframes insurance-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+[data-testid="running-step"],
+[aria-label*="loading" i],
+[aria-label*="cargando" i] {
+  animation: insurance-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-08-11T23:28:04.898910+00:00",
+  "route": "policies",
+  "generator_model": "gpt-4.1-mini",
+  "embedding_model": "text-embedding-3-small",
+  "top_k": 5,
+  "summary": {
+    "cases": 12,
+    "time_to_model_ms": {"mean": 475.06, "p50": 479.56, "p95": 795.28},
+    "model_response_time_ms": {"mean": 4411.09, "p50": 4416.54, "p95": 6754.63},
+    "backend_total_time_ms": {"mean": 4886.15, "p50": 4936.6, "p95": 7477.79}
+  },
+  "cases": [
+    {"id": "hospitalizacion_accidente", "time_to_model_ms": 1043.65, "model_response_time_ms": 7338.56, "backend_total_time_ms": 8382.22},
+    {"id": "cirugia_lasik", "time_to_model_ms": 561.14, "model_response_time_ms": 4730.95, "backend_total_time_ms": 5292.09},
+    {"id": "cirugia_ambulatoria", "time_to_model_ms": 282.9, "model_response_time_ms": 2733.68, "backend_total_time_ms": 3016.58},
+    {"id": "monto_maximo", "time_to_model_ms": 541.95, "model_response_time_ms": 4300.7, "backend_total_time_ms": 4842.65},
+    {"id": "exclusiones_embarazo", "time_to_model_ms": 460.94, "model_response_time_ms": 6276.87, "backend_total_time_ms": 6737.81},
+    {"id": "periodo_carencia", "time_to_model_ms": 592.06, "model_response_time_ms": 4536.27, "backend_total_time_ms": 5128.34},
+    {"id": "seguro_catastrofico", "time_to_model_ms": 504.86, "model_response_time_ms": 3964.87, "backend_total_time_ms": 4469.73},
+    {"id": "deducible_familiar", "time_to_model_ms": 280.92, "model_response_time_ms": 4013.81, "backend_total_time_ms": 4294.73},
+    {"id": "complicaciones_recien_nacido", "time_to_model_ms": 281.69, "model_response_time_ms": 2712.97, "backend_total_time_ms": 2994.66},
+    {"id": "indemnizacion_covid", "time_to_model_ms": 264.28, "model_response_time_ms": 2857.76, "backend_total_time_ms": 3122.05},
+    {"id": "codigos_covid", "time_to_model_ms": 388.16, "model_response_time_ms": 4934.2, "backend_total_time_ms": 5322.37},
+    {"id": "exclusiones_poliza_2021", "time_to_model_ms": 498.18, "model_response_time_ms": 4532.38, "backend_total_time_ms": 5030.55}
+  ]
+}
