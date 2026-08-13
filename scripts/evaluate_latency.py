@@ -15,6 +15,7 @@ from typing import Any
 from openai import AsyncOpenAI
 from qdrant_client import QdrantClient
 
+from eval_baseline import compare_latency_to_baseline, load_baseline
 from evaluate_retrieval import DEFAULT_QUESTIONS_PATH, load_cases
 from insurance_chatbot.indexing import DEFAULT_CHUNKS_PATH, load_chunks
 from insurance_chatbot.rag_service import RealRAGService, RealRetrievalService
@@ -23,6 +24,7 @@ from insurance_chatbot.settings import PROJECT_ROOT, Settings
 
 
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "evaluation" / "latency.json"
+DEFAULT_BASELINE_PATH = PROJECT_ROOT / "data" / "evaluation" / "latency_baseline.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +38,7 @@ class LatencyCase:
     backend_total_time_ms: float
     client_observed_time_ms: float
     retrieved_chunks: int
+    type: str = "standard"
 
 
 def percentile(values: list[float], percentile_value: float) -> float:
@@ -158,6 +161,7 @@ async def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
                     backend_total_time_ms=latency["total_time_ms"],
                     client_observed_time_ms=client_observed_ms,
                     retrieved_chunks=int(response.metadata.get("retrieved_chunks", 0)),
+                    type=case.type,
                 )
             )
     finally:
@@ -180,6 +184,10 @@ async def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         "summary": aggregate_results(results),
         "cases": [asdict(result) for result in results],
     }
+    if not args.no_baseline_compare:
+        report["baseline_comparison"] = compare_latency_to_baseline(
+            report, load_baseline(args.baseline_path)
+        )
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
     args.output_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -195,6 +203,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--baseline-path", type=Path, default=DEFAULT_BASELINE_PATH)
+    parser.add_argument(
+        "--no-baseline-compare",
+        action="store_true",
+        help="Skip comparing this run against the versioned baseline.",
+    )
     return parser
 
 
@@ -205,6 +219,9 @@ def main() -> None:
     except (ValueError, RuntimeError) as exc:
         raise SystemExit(f"Latency evaluation failed: {exc}") from exc
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    if report.get("baseline_comparison"):
+        print("Baseline comparison:")
+        print(json.dumps(report["baseline_comparison"], ensure_ascii=False, indent=2))
     print(f"Full report: {args.output_path}")
 
 

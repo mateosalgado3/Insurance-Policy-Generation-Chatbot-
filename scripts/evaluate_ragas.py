@@ -20,6 +20,7 @@ from typing import Any, Protocol
 from openai import AsyncOpenAI
 from qdrant_client import QdrantClient
 
+from eval_baseline import compare_ragas_to_baseline, load_baseline
 from evaluate_retrieval import DEFAULT_QUESTIONS_PATH, EvaluationCase, load_cases
 from insurance_chatbot.indexing import DEFAULT_CHUNKS_PATH, load_chunks
 from insurance_chatbot.rag_service import (
@@ -33,6 +34,7 @@ from insurance_chatbot.settings import PROJECT_ROOT, Settings
 
 
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "evaluation" / "ragas.json"
+DEFAULT_BASELINE_PATH = PROJECT_ROOT / "data" / "evaluation" / "ragas_baseline.json"
 DEFAULT_HEALTH_THRESHOLD = 0.60
 
 
@@ -67,6 +69,7 @@ class RagasCaseResult:
     context_relevance: float
     answer_reason: str | None = None
     context_reason: str | None = None
+    type: str = "standard"
 
 
 def _score(metric_result: Any, metric_name: str) -> tuple[float, str | None]:
@@ -117,6 +120,7 @@ async def evaluate_case(
         context_relevance=context_score,
         answer_reason=answer_reason,
         context_reason=context_reason,
+        type=case.type,
     )
 
 
@@ -133,6 +137,18 @@ def aggregate_results(
     answer_mean = sum(answer_scores) / len(answer_scores)
     context_mean = sum(context_scores) / len(context_scores)
     overall_mean = (answer_mean + context_mean) / 2
+
+    by_type: dict[str, Any] = {}
+    for case_type in sorted({item.type for item in results}):
+        type_results = [item for item in results if item.type == case_type]
+        type_answer = [item.answer_relevancy for item in type_results]
+        type_context = [item.context_relevance for item in type_results]
+        by_type[case_type] = {
+            "cases": len(type_results),
+            "answer_relevancy_mean": round(sum(type_answer) / len(type_answer), 4),
+            "context_relevance_mean": round(sum(type_context) / len(type_context), 4),
+        }
+
     return {
         "cases": len(results),
         "health_threshold": threshold,
@@ -150,6 +166,7 @@ def aggregate_results(
         },
         "overall_mean": round(overall_mean, 4),
         "healthy": answer_mean >= threshold and context_mean >= threshold,
+        "by_type": by_type,
     }
 
 
@@ -246,6 +263,10 @@ async def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         "summary": aggregate_results(results, threshold=args.health_threshold),
         "cases": [asdict(result) for result in results],
     }
+    if not args.no_baseline_compare:
+        report["baseline_comparison"] = compare_ragas_to_baseline(
+            report, load_baseline(args.baseline_path)
+        )
     args.output_path.parent.mkdir(parents=True, exist_ok=True)
     args.output_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
@@ -268,6 +289,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return exit code 2 when either mean relevance score is below the threshold.",
     )
+    parser.add_argument("--baseline-path", type=Path, default=DEFAULT_BASELINE_PATH)
+    parser.add_argument(
+        "--no-baseline-compare",
+        action="store_true",
+        help="Skip comparing this run against the versioned baseline.",
+    )
     return parser
 
 
@@ -279,6 +306,9 @@ def main() -> None:
         raise SystemExit(f"RAGAS evaluation failed: {exc}") from exc
 
     print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    if report.get("baseline_comparison"):
+        print("Baseline comparison:")
+        print(json.dumps(report["baseline_comparison"], ensure_ascii=False, indent=2))
     print(f"Full report: {args.output_path}")
     if args.fail_below_threshold and not report["summary"]["healthy"]:
         raise SystemExit(2)

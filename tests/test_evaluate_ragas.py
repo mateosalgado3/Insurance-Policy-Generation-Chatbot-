@@ -79,10 +79,10 @@ def test_aggregate_results_applies_sixty_percent_health_threshold() -> None:
     }
     results = [
         evaluate_ragas.RagasCaseResult(
-            id="one", answer_relevancy=0.8, context_relevance=0.7, **common
+            id="one", answer_relevancy=0.8, context_relevance=0.7, type="standard", **common
         ),
         evaluate_ragas.RagasCaseResult(
-            id="two", answer_relevancy=0.6, context_relevance=0.5, **common
+            id="two", answer_relevancy=0.6, context_relevance=0.5, type="unanswerable", **common
         ),
     ]
 
@@ -93,3 +93,5 @@ def test_aggregate_results_applies_sixty_percent_health_threshold() -> None:
     assert summary["context_relevance"]["mean"] == 0.6
     assert summary["context_relevance"]["passing_cases"] == 1
     assert summary["healthy"] is True
+    assert summary["by_type"]["standard"]["answer_relevancy_mean"] == 0.8
+    assert summary["by_type"]["unanswerable"]["cases"] == 1
