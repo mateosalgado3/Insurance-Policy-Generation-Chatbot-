@@ -20,6 +20,12 @@ from insurance_chatbot.settings import PROJECT_ROOT, Settings
 DEFAULT_QUESTIONS_PATH = PROJECT_ROOT / "data" / "evaluation" / "retrieval_questions.json"
 DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "outputs" / "evaluation" / "retrieval.json"
 
+CASE_TYPES = frozenset({"standard", "unanswerable", "ambiguous", "adversarial"})
+# Cases whose whole point is that no chunk should be labeled relevant: an
+# out-of-corpus question, or an adversarial prompt that must not be "solved"
+# by matching content imported from another policy.
+TYPES_WITHOUT_REQUIRED_CHUNKS = frozenset({"unanswerable", "adversarial"})
+
 
 @dataclass(frozen=True, slots=True)
 class EvaluationCase:
@@ -27,6 +33,8 @@ class EvaluationCase:
     question: str
     policy_id: str | None
     relevant_chunk_ids: tuple[str, ...]
+    type: str = "standard"
+    note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,9 +53,18 @@ def load_cases(path: Path, available_chunk_ids: set[str]) -> list[EvaluationCase
             question=str(raw["question"]).strip(),
             policy_id=raw.get("policy_id"),
             relevant_chunk_ids=tuple(raw["relevant_chunk_ids"]),
+            type=str(raw.get("type", "standard")),
+            note=raw.get("note"),
         )
-        if not case.question or not case.relevant_chunk_ids:
+        if not case.question:
             raise ValueError(f"Invalid evaluation case: {case.id}")
+        if case.type not in CASE_TYPES:
+            raise ValueError(f"Case {case.id} has an unknown type: {case.type}")
+        if not case.relevant_chunk_ids and case.type not in TYPES_WITHOUT_REQUIRED_CHUNKS:
+            raise ValueError(
+                f"Case {case.id} has type={case.type!r} but no relevant_chunk_ids; "
+                "only unanswerable/adversarial cases may leave it empty"
+            )
         if case.id in seen_ids:
             raise ValueError(f"Duplicate evaluation case id: {case.id}")
         missing = set(case.relevant_chunk_ids) - available_chunk_ids
@@ -134,15 +151,30 @@ def openai_rankings(
     return rankings
 
 
+def _labeled_metrics(cases: list[EvaluationCase]) -> dict[str, float | int]:
+    """Aggregate hit rate/recall/MRR over cases that declare relevant chunks.
+
+    Cases without relevant_chunk_ids (unanswerable/adversarial-with-no-target)
+    have no notion of recall, so they are tracked separately by
+    ``compute_metrics`` instead of forcing a division by zero here.
+    """
+    reciprocal_ranks = [case["reciprocal_rank"] for case in cases]
+    recalls = [case["recall"] for case in cases]
+    hits = sum(1 for case in cases if case["recall"] > 0)
+    return {
+        "labeled_questions": len(cases),
+        "hit_rate_at_k": round(hits / len(cases), 4) if cases else 0.0,
+        "recall_at_k": round(float(np.mean(recalls)), 4) if cases else 0.0,
+        "mrr": round(float(np.mean(reciprocal_ranks)), 4) if cases else 0.0,
+    }
+
+
 def compute_metrics(
     cases: list[EvaluationCase],
     rankings: dict[str, list[RankedHit]],
     *,
     top_k: int,
-) -> tuple[dict[str, float | int], list[dict[str, Any]]]:
-    reciprocal_ranks: list[float] = []
-    recalls: list[float] = []
-    hits = 0
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     details: list[dict[str, Any]] = []
     for case in cases:
         relevant = set(case.relevant_chunk_ids)
@@ -158,31 +190,43 @@ def compute_metrics(
             None,
         )
         reciprocal_rank = 1 / rank if rank else 0.0
-        recall = len(matched) / len(relevant)
-        hits += int(bool(matched))
-        reciprocal_ranks.append(reciprocal_rank)
-        recalls.append(recall)
+        recall = len(matched) / len(relevant) if relevant else None
         details.append(
             {
                 "id": case.id,
                 "question": case.question,
+                "type": case.type,
                 "relevant_chunk_ids": list(case.relevant_chunk_ids),
                 "rank": rank,
                 "reciprocal_rank": round(reciprocal_rank, 4),
-                "recall": round(recall, 4),
+                "recall": round(recall, 4) if recall is not None else None,
+                "top_retrieved_score": ranked[0].score if ranked else None,
                 "retrieved": [asdict(hit) for hit in ranked],
             }
         )
-    return (
-        {
-            "questions": len(cases),
-            "top_k": top_k,
-            "hit_rate_at_k": round(hits / len(cases), 4),
-            "recall_at_k": round(float(np.mean(recalls)), 4),
-            "mrr": round(float(np.mean(reciprocal_ranks)), 4),
-        },
-        details,
-    )
+
+    labeled = [detail for detail in details if detail["recall"] is not None]
+    unlabeled = [detail for detail in details if detail["recall"] is None]
+    metrics = _labeled_metrics(labeled)
+    metrics["top_k"] = top_k
+    metrics["total_questions"] = len(cases)
+    metrics["unlabeled_questions"] = len(unlabeled)
+
+    by_type: dict[str, dict[str, float | int]] = {}
+    for case_type in sorted({case.type for case in cases}):
+        type_details = [
+            detail
+            for detail, case in zip(details, cases, strict=True)
+            if case.type == case_type
+        ]
+        labeled_of_type = [detail for detail in type_details if detail["recall"] is not None]
+        entry = _labeled_metrics(labeled_of_type) if labeled_of_type else {"labeled_questions": 0}
+        entry["total_cases"] = len(type_details)
+        entry["unlabeled_cases"] = len(type_details) - len(labeled_of_type)
+        by_type[case_type] = entry
+    metrics["by_type"] = by_type
+
+    return metrics, details
 
 
 def exploratory_threshold(
