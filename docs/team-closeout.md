@@ -13,7 +13,7 @@ se agregan frameworks, modos ni rediseños antes de cerrar QA.
 | Nicolás | Cumplido por integración final | Chips, filtro, SSE, fuentes, errores, cuatro flujos, latencia y pantalla móvil verificados; capturas `11` a `16`. |
 | David | Cumplido | Caso `periodo_carencia` investigado; ninguna variante justificó degradar la línea base, por lo que se conservó la configuración estable. |
 | Javier | Cumplido | Tres scripts de evaluación y 52 casos: 34 estándar, 7 sin respuesta, 5 ambiguos y 6 adversariales. |
-| Daisy | Paquete QA listo | E2E final, checklist, logs, capturas, pregunta de respaldo y presentación final preparados para su revisión y exposición. |
+| Daisy | Cubierto por Mateo | Por disponibilidad, Mateo ejecutó el E2E final y asumió checklist, demo, limitaciones, respaldo offline y presentación. |
 
 La aprobación técnica de backend y QA queda sustentada por el build limpio,
 74 pruebas aprobadas, ambos contenedores saludables y el E2E real de los cuatro
@@ -96,6 +96,9 @@ retrieval, RAGAS y latencia.
 
 **Objetivo:** demostrar la versión exacta que será entregada.
 
+**Sustitución final:** Daisy no dispone del tiempo necesario para el cierre.
+Mateo asume esta sección sin cambiar el alcance ni el software etiquetado.
+
 - Ejecutar el E2E final desde un clon/configuración limpia con Docker.
 - Completar checklist, capturas, logs, commit probado y resultados observados.
 - Preparar diapositivas con C4, 9 PDF, 262 chunks, métricas y limitaciones.
@@ -106,6 +109,9 @@ retrieval, RAGAS y latencia.
 
 **Aceptación:** checklist firmado, presentación de máximo diez minutos, evidencia legible
 y plan alternativo ensayado.
+
+**Estado:** aceptación técnica completada por Mateo sobre `v0.5.0`; queda
+únicamente ejecutar el ensayo humano con el equipo disponible.
 
 ## Orden recomendado de cierre
 

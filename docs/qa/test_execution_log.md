@@ -797,3 +797,29 @@ The two-case latency smoke was slower than the versioned 12-case baseline and
 is recorded as provider/network variability, not as a new benchmark or SLA. The
 versioned baseline remains the correct summary for the presentation because it
 uses more observations.
+
+## Daisy Substitute Sign-Off
+
+- Date: 2026-08-18
+- Owner: Mateo Salgado, replacing Daisy Llivisaca for final QA and presentation
+- Commit and release: `85f1dc0`, tag `v0.5.0`
+- Docker status: API and frontend healthy
+- Presentation: eight slides rendered; overflow test passed
+- Browser: final home screen loaded with 262 chunks, route chips, configuration
+  panel and policy filter visible
+- Controlled invalid request: HTTP 422
+- Docker log scan: zero matching error lines
+
+Final real-service replay:
+
+| Flow | Result | Evidence | Backend total |
+|---|---|---:|---:|
+| `policies` | Passed | 5 PDF sources / 5 chunks | 8.47 s |
+| `web` | Passed | 12 web sources | 20.34 s |
+| `combined` | Passed | 17 sources | 12.93 s |
+| `/generate-policy` | Passed | 6 chunks and review disclaimer | 17.19 s |
+| `/ask/stream` | Passed | 10 status, 126 token, 1 complete, 0 error events | completed |
+
+The web and draft timings demonstrate provider variability and are not used as
+an SLA. The offline backup question, filtered to `POL320190074`, remains the
+required fallback for the live presentation.

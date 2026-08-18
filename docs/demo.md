@@ -49,16 +49,33 @@ disponible en `http://127.0.0.1:8001`.
 |---:|---|---|
 | 0:00–1:30 | Mateo | Problema, alcance y C4 |
 | 1:30–2:40 | Carlos | API, Docker, contratos y errores |
-| 2:40–3:40 | Nicolás o Mateo | Frontend, SSE, fuentes y tiempos |
+| 2:40–3:40 | Nicolás; respaldo Mateo | Frontend, SSE, fuentes y tiempos |
 | 3:40–4:50 | David | `periodo_carencia` y decisión basada en evidencia |
 | 4:50–6:15 | Javier | Retrieval, RAGAS y latencia |
-| 6:15–8:30 | Daisy | Demo `policies`, `web`, `combined` y borrador |
-| 8:30–9:30 | Mateo | Limitaciones, conclusiones y respaldo offline |
+| 6:15–8:45 | Mateo | Demo `policies`, `web`, `combined` y borrador; reemplazo de Daisy |
+| 8:45–9:30 | Mateo | Limitaciones, conclusiones y respaldo offline |
 | 9:30–10:00 | Equipo | Margen para transición o una pregunta |
 
-Si Nicolás no participa, Mateo cubre el frontend sin cambiar el orden de la
-demo. La pregunta de respaldo offline es: `¿Qué es el período de carencia y
-desde cuándo se cuenta?`, en modo `policies`.
+Daisy no participa en el cierre por disponibilidad. Mateo asume la demo y su
+checklist QA ya fue ejecutado sobre `v0.5.0`. Si Nicolás tampoco participa,
+Mateo cubre el frontend y reduce la demostración combinada a una explicación
+breve para mantener el límite de diez minutos. La pregunta de respaldo offline
+es: `¿Qué es el período de carencia y desde cuándo se cuenta?`, en modo
+`policies`, con el filtro `POL320190074`.
+
+### Checklist que Mateo asume por Daisy
+
+- Abrir la presentación `docs/Insurance_Policy_RAG_Final_Demo.pptx` y usar sus
+  notas del presentador.
+- Confirmar antes de exponer que `/health` está saludable y `/ready` muestra
+  262 chunks.
+- Mostrar primero `policies`; continuar con `web` y `combined` solo si Internet
+  está estable.
+- Presentar el borrador como material sujeto a revisión humana y legal.
+- Si falla Internet, conservar el frontend abierto y ejecutar únicamente la
+  pregunta offline de respaldo.
+- Cerrar aclarando que retrieval, RAGAS y latencia miden aspectos diferentes y
+  que los tiempos observados no constituyen un SLA.
 
 ## 2. Casos de demostración
 
