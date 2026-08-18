@@ -4,6 +4,22 @@ Este plan congela el alcance del MVP. Cualquier cambio debe resolver un defecto,
 mejorar una métrica comprobable o completar evidencia para la presentación. No
 se agregan frameworks, modos ni rediseños antes de cerrar QA.
 
+## Estado final del release candidate — 2026-08-18
+
+| Responsable | Estado | Evidencia de cierre |
+|---|---|---|
+| Mateo | Listo para ensayo | C4 actualizado en README, guion de 90 segundos y agenda de diez minutos en `docs/demo.md`. |
+| Carlos | Cumplido técnicamente | API 0.5.0, seis endpoints, Docker saludable, contratos y latencia validados; cero errores en logs finales. |
+| Nicolás | Cumplido por integración final | Chips, filtro, SSE, fuentes, errores, cuatro flujos, latencia y pantalla móvil verificados; capturas `11` a `16`. |
+| David | Cumplido | Caso `periodo_carencia` investigado; ninguna variante justificó degradar la línea base, por lo que se conservó la configuración estable. |
+| Javier | Cumplido | Tres scripts de evaluación y 52 casos: 34 estándar, 7 sin respuesta, 5 ambiguos y 6 adversariales. |
+| Daisy | Paquete QA listo | E2E final, checklist, logs, capturas, pregunta de respaldo y presentación final preparados para su revisión y exposición. |
+
+La aprobación técnica de backend y QA queda sustentada por el build limpio,
+74 pruebas aprobadas, ambos contenedores saludables y el E2E real de los cuatro
+modos más borradores. Solo queda el ensayo humano de exposición; no queda trabajo
+de implementación bloqueante.
+
 ## Mateo Salgado — Lead y arquitectura
 
 **Objetivo:** entregar una versión coherente, explicable y ensayada.

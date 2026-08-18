@@ -75,6 +75,54 @@ def test_sources_group_web_links_and_context_badges() -> None:
     assert "Modelo" in context
 
 
+def test_combined_context_uses_slowest_parallel_component_for_visible_timing() -> None:
+    context = _format_response_context(
+        {
+            "route": "combined",
+            "response_time_ms": 5100,
+            "latency_ms": {
+                "total_time_ms": 5090,
+                "parallel_components": {
+                    "policies": {
+                        "time_to_model_ms": 620,
+                        "model_response_time_ms": 4200,
+                    },
+                    "web": {
+                        "time_to_model_ms": 5,
+                        "model_response_time_ms": 5080,
+                    },
+                },
+            },
+        },
+        "combined",
+        None,
+    )
+
+    assert "🔀 Combinado" in context
+    assert "Hasta modelo:** 0.6s" in context
+    assert "Modelo:** 5.1s" in context
+    assert "Total:** 5.1s" in context
+
+
+def test_draft_context_displays_latency_without_adding_a_query_mode() -> None:
+    context = _format_response_context(
+        {
+            "response_time_ms": 2800,
+            "latency_ms": {
+                "time_to_model_ms": 450,
+                "model_response_time_ms": 2340,
+            },
+        },
+        "draft",
+        None,
+    )
+
+    assert "📝 Borrador" in context
+    assert "Hasta modelo:** 0.5s" in context
+    assert "Modelo:** 2.3s" in context
+    assert "Total:** 2.8s" in context
+
+
 def test_ask_client_sends_mode_and_policy(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

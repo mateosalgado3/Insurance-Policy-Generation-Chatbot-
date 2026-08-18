@@ -106,6 +106,12 @@ Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
 | `08-timeout.png` | Frontend timeout handling |
 | `09-health-endpoint.png` | Health endpoint verification |
 | `10-config-endpoint.png` | Configuration endpoint verification |
+| `11-frontend-home.png` | Final ready state, mode chips and configuration controls |
+| `12-policies-final.png` | Final policies answer with PDF sources and latency |
+| `13-web-final.png` | Final Chile web answer with clickable sources and latency |
+| `14-combined-final.png` | Final combined answer with policy and web evidence |
+| `15-draft-final.png` | Review-only draft with sources, disclaimer and latency |
+| `16-mobile-final.png` | Mobile-width validation after fixing settings overflow |
 
 ## Frontend Web Flow Status
 
@@ -168,7 +174,7 @@ The normal application path uses real services. The `policies` route uses `RealR
 - All planned manual QA scenarios for the documented project scope were completed.
 - The QA evidence package is finalized in `docs/qa/screenshots/`.
 - The demo runbook is finalized in `docs/qa/demo_runbook.md`.
-- Recommended demo questions are documented and avoid the known `FE-WEB-001` query.
+- Recommended demo questions are documented. `FE-WEB-001` is resolved; the live demo uses the more relevant Chile insurance-regulation query.
 
 ## Optional Future Improvements
 

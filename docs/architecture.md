@@ -13,7 +13,7 @@ flowchart LR
         eda --> chunks["262 chunks"]
         chunks --> docEmb["Embeddings de documentos"]
         docEmb --> qdrant[("Qdrant local")]
-        eval["12 preguntas de evaluación"] --> metrics["Hit Rate, Recall y MRR"]
+        eval["52 preguntas curadas<br/>43 con chunks objetivo"] --> metrics["Hit Rate, Recall y MRR"]
         qdrant --> metrics
     end
 

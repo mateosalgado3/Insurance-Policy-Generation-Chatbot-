@@ -13,8 +13,9 @@ con información web reciente y generar borradores trazables para revisión huma
 - FastAPI con `/ask`, `/ask/stream`, `/generate-policy`, `/config`, `/health` y `/ready`.
 - Frontend Chainlit con chips de ruta, filtro automático/manual por póliza, streaming y generación de borradores.
 - API y frontend empaquetados con Docker Compose.
-- Evaluación real: Hit Rate@5 1.00, Recall@5 0.9167 y MRR 0.8125.
-- RAGAS: Answer Relevancy 0.7053 y Context Relevance 0.9792.
+- Retrieval ampliado a 52 casos: Hit Rate@5 1.0000, Recall@5 0.9341 y MRR 0.8078.
+- RAGAS sobre la línea base original de 12 casos: Answer Relevancy 0.7053 y
+  Context Relevance 0.9792.
 - Latencia de pólizas instrumentada desde retrieval hasta respuesta del modelo.
 
 ## Modelo de arquitectura C4
@@ -59,7 +60,7 @@ flowchart LR
     subgraph seguros["Software System: Seguros AI"]
         ui["Container: Chainlit :8001<br/>Chat, chips, SSE y fuentes"]
         api["Container: FastAPI :8000<br/>Contratos, agente y errores seguros"]
-        qdrant[("Container: Qdrant embebido<br/>262 vectores persistentes")]
+        qdrant[("Data store: Qdrant embebido<br/>262 vectores persistentes")]
         batch["Container lógico: scripts Python<br/>EDA, ingesta, retrieval, RAGAS y latencia"]
         artifacts[("Archivos versionados<br/>JSONL, preguntas y líneas base")]
     end
@@ -223,7 +224,7 @@ python -m pytest -q
 python scripts/evaluate_retrieval.py --provider local --top-k 5
 ```
 
-La evaluación OpenAI de las 12 preguntas curadas:
+La evaluación OpenAI de los 52 casos curados (43 con chunks objetivo):
 
 ```powershell
 python scripts/evaluate_retrieval.py --provider openai --top-k 5
@@ -238,7 +239,8 @@ python scripts/evaluate_ragas.py --health-threshold 0.60
 ```
 
 El reporte completo se guarda en `outputs/evaluation/ragas.json`. Para una prueba
-económica antes de evaluar los 12 casos se puede agregar `--limit 2`.
+económica antes de evaluar los 52 casos se puede agregar `--limit 2`. La línea
+base RAGAS versionada continúa siendo la corrida original de 12 casos.
 
 Línea base validada con RAGAS 0.4.3: relevancia de respuesta `0.7053`, relevancia
 de contexto `0.9792` y promedio combinado `0.8422`; ambas métricas globales
@@ -259,6 +261,18 @@ python scripts/evaluate_latency.py
 El reporte completo queda en `outputs/evaluation/latency.json` y la línea base
 compacta está versionada en `data/evaluation/latency_baseline.json`. Los tiempos
 dependen de red, carga del proveedor y equipo; son una referencia, no un SLA.
+
+### Cómo interpretar las métricas
+
+| Familia | Pregunta que responde | Métricas | Dataset vigente |
+|---|---|---|---|
+| Retrieval | ¿Aparecen los chunks correctos y en qué posición? | Hit Rate@5, Recall@5, MRR | 52 casos; 43 etiquetados |
+| RAGAS | ¿La respuesta responde y el contexto es pertinente? | Answer Relevancy, Context Relevance | Línea base de 12 casos |
+| Latencia | ¿Cuánto tarda cada fase y el pipeline completo? | media, p50, p95 | Línea base de 12 casos |
+
+El `0.60` es un umbral operativo interno para RAGAS, no un estándar universal.
+Los scores de similitud de Qdrant tampoco son porcentajes RAGAS ni deben
+compararse directamente con ese umbral.
 
 Consulta [la arquitectura](docs/architecture.md), el
 [reporte de evaluación](docs/evaluation.md) y el

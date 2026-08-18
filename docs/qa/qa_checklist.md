@@ -25,14 +25,14 @@ Legend:
 - [x] Completed - Generated `outputs` are ignored by Git according to documented inspection.
 - [x] Completed - Local runtime lock files under the Qdrant index are ignored by Git according to documented inspection.
 - [x] Completed - `.dockerignore` excludes `.env`, `.venv`, raw data, outputs, caches, tests, docs, and frontend from the API image context.
-- [~] Partial - The repository intentionally versions `data/index/chunks.jsonl` and the local Qdrant snapshot for demo reuse.
+- [x] Completed - The repository intentionally versions `data/index/chunks.jsonl` and the local Qdrant snapshot as the reproducible demo artifact; runtime lock files remain ignored.
 
 ## API
 
 - [x] Completed - FastAPI is available.
 - [x] Completed - `GET /health` was manually validated.
 - [x] Completed - `GET /ready` was manually validated before and after local indexing.
-- [~] Partial - `GET /config` is documented and was observed from Chainlit, but the Swagger manual case remains not executed.
+- [x] Completed - `GET /config` was revalidated directly against the final Docker API and returned the active models, Qdrant configuration and `top_k: 5`.
 - [x] Completed - `POST /ask` was manually validated from Swagger for a real policies query.
 - [x] Completed - `POST /generate-policy` was manually validated from Swagger.
 - [x] Completed - Swagger is documented at `http://127.0.0.1:8000/docs`.
@@ -58,11 +58,11 @@ Legend:
 ## Error Handling
 
 - [x] Completed - `/generate-policy` 422 responses were validated directly from Swagger.
-- [x] Completed - `FE-WEB-001` confirmed the frontend handles a backend HTTP 500 with a controlled message and without exposing internal details.
+- [x] Completed - `FE-WEB-001` was regression-tested after the fix and now returns HTTP 200; empty web output also degrades safely instead of returning HTTP 500.
 - [x] Completed - `FE-ERR-API-OFF-001` confirmed the frontend handles an unavailable backend API with a controlled message and no infinite loading.
 - [x] Completed - `FE-TIMEOUT-001` confirmed the frontend handles backend timeout with a controlled message and no infinite loading.
-- [~] Partial - Web-mode HTTP 500 is documented as query-specific or result-specific, with root cause still under investigation.
-- [~] Partial - API-layer timeout mapping is documented in the endpoint, but the completed timeout validation was performed from the frontend.
+- [x] Completed - The historical web-mode HTTP 500 root cause was fixed and the original query was regression-tested with HTTP 200.
+- [x] Completed - Timeout and upstream error mappings are covered by automated API tests; the user-facing timeout path was also validated from the frontend.
 
 ## Frontend
 
@@ -92,7 +92,7 @@ Legend:
 - [x] Completed - Frontend displayed PDF sources and web URL sources in combined mode.
 - [x] Completed - Frontend behavior when the API is unavailable was validated in Docker Compose.
 - [x] Completed - Frontend timeout behavior was validated.
-- [~] Partial - Web mode is partially validated because `FE-WEB-001` failed with HTTP 500 while `FE-WEB-002` passed.
+- [x] Completed - Web mode is validated: the historical `FE-WEB-001` failure is resolved, the original query returns HTTP 200, and the final Chile query returned 12 web sources.
 
 ## Sources
 
@@ -101,7 +101,7 @@ Legend:
 - [x] Completed - Sources were visible in the Chainlit UI for `FE-POL-001`.
 - [x] Completed - PDF sources were visible in the Chainlit UI for `FE-COMB-001`.
 - [x] Completed - Web sources with URLs were visible in the Chainlit UI for `FE-COMB-001`.
-- [~] Partial - Source format consistency still needs team confirmation because QA docs record `list[str]` while architecture references richer source attributes.
+- [x] Completed - The public API keeps `sources` compatible while the frontend normalizes richer source metadata for PDF labels and clickable web URLs.
 - [x] Completed - Final screenshots showing sources in the UI were created under `docs/qa/screenshots/`.
 
 ## Qdrant And Indexing
@@ -112,7 +112,7 @@ Legend:
 - [x] Completed - `GET /ready` confirmed the index state before and after indexing.
 - [x] Completed - The current repository documents a reusable local Qdrant snapshot.
 - [x] Completed - Docker Compose configures the API with `QDRANT_PATH: /app/data/index/qdrant`.
-- [~] Partial - Qdrant is used as local persistent storage or snapshot inside the current stack; there is no separate Qdrant container in `compose.yaml`.
+- [x] Completed - Qdrant intentionally runs as an embedded local persistent store mounted at `/app/data/index/qdrant`; a separate service container is not required by this architecture.
 
 ## Real Retrieval
 
@@ -122,14 +122,14 @@ Legend:
 - [x] Completed - Retrieval returned citable source payloads used in the API response.
 - [x] Completed - The validated policies response used `gpt-4.1-mini` and was not mock.
 - [x] Completed - Manual grounding against cited PDF pages was completed for the first policies case.
-- [~] Partial - Web retrieval is partially validated because one specific web query still returns HTTP 500.
+- [x] Completed - Web retrieval is validated in explicit web and combined modes; the former query-specific HTTP 500 is resolved.
 - [x] Completed - Policies-mode query with no supporting evidence was executed and did not fabricate unsupported coverage.
 
 ## Modes
 
 - [x] Completed - `policies` mode validated from Chainlit.
 - [x] Completed - `combined` mode validated from Chainlit.
-- [~] Partial - `web` mode partially validated from Chainlit.
+- [x] Completed - `web` mode validated from Chainlit with current Chile insurance-regulation sources.
 - [x] Completed - `auto` mode manual validation was executed for a general knowledge question and routed to `web`.
 - [x] Completed - Out-of-scope manual validation was executed in policies mode.
 
@@ -140,15 +140,15 @@ Legend:
 - [x] Completed - `POST /generate-policy` works from Swagger.
 - [x] Completed - Draft generation returns sources, metadata, and disclaimer.
 - [x] Completed - Responsible handling of missing limits, deductibles, and catastrophic coverage details was observed.
-- [~] Partial - Some internal citation labels may be unclear for end users and remain a UX improvement.
+- [x] Accepted - Draft generation is functionally complete; terse internal citation suffixes remain a documented, non-blocking UX limitation.
 
 ## Demo Preparation
 
 - [x] Completed - `docs/demo.md` documents Docker Compose startup, validation, demo cases, evidence to capture, logs, and shutdown.
 - [x] Completed - `README.md` documents Docker Compose startup, local API startup, local Chainlit startup, endpoints, Chainlit commands, and indexing commands.
 - [x] Completed - A validated policies question is documented as a demo candidate.
-- [~] Partial - `FE-COMB-001` is a validated combined candidate, but the final demo question set is not selected.
-- [~] Partial - General web mode works, and the recommended demo flow excludes the specific historical `FE-WEB-001` query.
+- [x] Completed - The final combined demo question and its evidence are recorded in `14-combined-final.png`.
+- [x] Completed - The final web demo question for Chile and its evidence are recorded in `13-web-final.png`.
 - [x] Completed - Recommended demo question list is documented in `docs/qa/demo_runbook.md`.
 - [x] Completed - Final demo evidence screenshots were created under `docs/qa/screenshots/`.
 

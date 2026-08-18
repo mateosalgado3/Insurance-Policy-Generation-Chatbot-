@@ -59,6 +59,27 @@ table {
   animation: insurance-pulse 1.2s ease-in-out infinite;
 }
 
+@media (max-width: 480px) {
+  [role="dialog"]:has(#confirm-sidebar) {
+    width: calc(100% - 1rem) !important;
+    max-width: 24rem;
+    padding: 1rem !important;
+  }
+
+  [role="dialog"] div:has(> #confirm-sidebar) {
+    flex-wrap: wrap;
+  }
+
+  [role="dialog"] div:has(> #confirm-sidebar) > .flex-1 {
+    display: none;
+  }
+
+  [role="dialog"] div:has(> #confirm-sidebar) > button {
+    flex: 1 1 30%;
+    padding-inline: 0.5rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

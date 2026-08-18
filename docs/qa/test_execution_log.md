@@ -184,7 +184,7 @@ Formal conclusion:
 - The case is closed as Passed.
 - This question can remain a demo candidate.
 
-## PowerShell `/ask` Attempt Needs Retest
+## Resolved Historical PowerShell `/ask` Attempt
 
 - Date: 2026-07-29
 - Endpoint: `POST /ask`
@@ -205,15 +205,15 @@ Invoke-RestMethod `
 Invoke-RestMethod : {"detail":"There was an error parsing the body"}
 ```
 
-- Status: Needs retest
+- Status: Resolved on 2026-08-18
 
 Notes:
 
-- The server rejected the body because it could not parse it as JSON.
-- This is not classified as a confirmed `/ask` product bug because the same endpoint responded with HTTP 200 OK from Swagger.
-- The probable retest area is the preparation or content of the local `$body` variable, but no definitive cause is recorded without reproducing it.
+- The historical body was malformed before it reached endpoint logic.
+- Rebuilding `$body` with `ConvertTo-Json` returned HTTP 200 with `answer`,
+  `sources`, and `metadata`, confirming this was not an `/ask` product bug.
 
-Suggested retest procedure, not yet executed:
+Successful retest procedure:
 
 ```powershell
 $body = @{
@@ -236,7 +236,7 @@ Invoke-RestMethod `
 - Case ID: `FE-POL-001`
 - Flow: Chainlit frontend -> FastAPI -> Qdrant -> OpenAI -> Chainlit frontend
 - Status: Passed
-- Automated suite context: latest reported suite passed with 54 passed and 2 warnings
+- Automated suite context: final suite passed with 74 tests and 2 non-blocking third-party warnings
 
 Configuration validated from Chainlit with `/config`:
 
@@ -758,3 +758,42 @@ The run reported a Starlette/TestClient deprecation warning.
 - Priority: low
 - Blocking status: non-blocking
 - Action in this task: record only
+
+## Final Docker E2E Certification
+
+- Date: 2026-08-18
+- Environment: clean Docker Compose rebuild using the release-candidate worktree
+- API: healthy, version 0.5.0
+- Frontend: healthy
+- Readiness: `ready`, OpenAI configured, Qdrant collection `queplan_policies`, 262 chunks
+- Automated suite: 74 passed; two third-party deprecation warnings; zero failures
+- Log scan: zero error, traceback, exception, timeout or rate-limit lines in the last 200 lines of both services
+
+Observed real-service flows:
+
+| Flow | Result | Sources/chunks | Total latency |
+|---|---|---:|---:|
+| `policies` with `POL320190074` | HTTP 200, grounded answer | 5 / 5 | 10.82 s |
+| `web` with Chile regulation query | HTTP 200, current web answer | 12 web sources | 12.77 s |
+| `combined` | HTTP 200, policy and web sections | 17 sources | 15.89 s |
+| `auto` | HTTP 200, routed to policies | 5 / 5 | 17.19 s outer request |
+| `/generate-policy` | HTTP 200, review-only draft and disclaimer | 6 / 6 | 13.33 s |
+| `/ask/stream` | Complete SSE response | 13 status + 116 token events | completed without error |
+
+Controlled invalid input returned HTTP 422. Browser QA confirmed route chips,
+policy filter, sources, clickable web links, streaming states, latency labels and
+mobile layout without horizontal overflow.
+
+Final evaluation smoke checks on the same release candidate:
+
+- OpenAI retrieval, 52 cases: Hit Rate@5 `1.0000`, Recall@5 `0.9341`, MRR `0.8078`.
+- RAGAS, two-case smoke subset: Answer Relevancy `0.7487`, Context Relevance
+  `1.0000`, overall `0.8743`; both relevance metrics passed the internal `0.60`
+  health threshold.
+- Latency, two-case smoke subset: mean time-to-model `648.42 ms`, mean model
+  time `11,132.05 ms`, mean backend total `11,780.47 ms`.
+
+The two-case latency smoke was slower than the versioned 12-case baseline and
+is recorded as provider/network variability, not as a new benchmark or SLA. The
+versioned baseline remains the correct summary for the presentation because it
+uses more observations.

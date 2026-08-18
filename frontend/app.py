@@ -38,6 +38,7 @@ MODE_LABELS = {
     "combined": "🔀 Combinado",
     "out_of_scope": "🛡️ Fuera de alcance",
 }
+DRAFT_LABEL = "📝 Borrador"
 POLICY_ID_PATTERN = re.compile(r"\bPOL\d{9,12}\b", re.IGNORECASE)
 
 
@@ -76,13 +77,31 @@ def _format_response_context(
     policy_id: str | None,
 ) -> str:
     route = str(metadata.get("route", requested_mode))
-    labels = [f"**Ruta:** {MODE_LABELS.get(route, route)}"]
+    route_label = DRAFT_LABEL if route == "draft" else MODE_LABELS.get(route, route)
+    labels = [f"**Ruta:** {route_label}"]
     if policy_id:
         labels.append(f"**Póliza:** `{policy_id}`")
     latency = metadata.get("latency_ms")
     if isinstance(latency, dict):
         time_to_model = latency.get("time_to_model_ms")
         model_response = latency.get("model_response_time_ms")
+        parallel = latency.get("parallel_components")
+        if isinstance(parallel, dict):
+            component_latencies = [item for item in parallel.values() if isinstance(item, dict)]
+            if not isinstance(time_to_model, (int, float)):
+                pre_model_values = [
+                    item["time_to_model_ms"]
+                    for item in component_latencies
+                    if isinstance(item.get("time_to_model_ms"), (int, float))
+                ]
+                time_to_model = max(pre_model_values, default=None)
+            if not isinstance(model_response, (int, float)):
+                model_values = [
+                    item["model_response_time_ms"]
+                    for item in component_latencies
+                    if isinstance(item.get("model_response_time_ms"), (int, float))
+                ]
+                model_response = max(model_values, default=None)
         if isinstance(time_to_model, (int, float)):
             labels.append(f"**Hasta modelo:** {time_to_model / 1000:.1f}s")
         if isinstance(model_response, (int, float)):
@@ -317,7 +336,9 @@ async def _generate_draft(policy_ids: list[str], instructions: str) -> None:
 
     await _stream_text(message, result.draft)
     await message.stream_token(
-        f"\n\n> ⚠️ {result.disclaimer}{_format_sources(result.sources)}"
+        f"\n\n> ⚠️ {result.disclaimer}"
+        f"{_format_response_context(result.metadata, 'draft', None)}"
+        f"{_format_sources(result.sources)}"
     )
     await message.update()
 

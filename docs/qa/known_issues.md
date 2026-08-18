@@ -49,6 +49,12 @@
 
 - Type: UX improvement
 - Impact: non-functional
-- Status: open
+- Status: accepted non-blocking limitation
 - Observation: some internal citation labels, such as `[Fuente 3, q.vi]` and `[Fuente 3, u.]`, may not be meaningful for end users.
 - Notes: this is not classified as a functional defect. Draft generation completed successfully and cited policy sources.
+
+## Final release status
+
+No open blocking defect remains as of the 2026-08-18 release-candidate run.
+The remaining items in this document are low-impact dependency warnings or
+accepted presentation/UX limitations.

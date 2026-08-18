@@ -279,21 +279,24 @@ Expected checks:
 - Disclaimer or review warning is included.
 - Missing limits, deductibles, or catastrophic coverage details are left for manual definition instead of invented.
 
-## 9. Question Excluded From The Recommended Demo
+## 9. Historical Web Regression Case
 
-The following historical `FE-WEB-001` question is excluded from the recommended live demo:
+The following historical `FE-WEB-001` question is retained as a regression case,
+but the live demo uses a Chile-specific regulatory query:
 
 ```text
 /mode web
 What are the most relevant recent developments in Ecuador's insurance sector?
 ```
 
-Known result:
+Final result:
 
-- Chainlit displayed a controlled backend error message.
-- Backend returned HTTP 500.
-- Root cause is under investigation.
-- Evidence from `FE-WEB-002` and `FE-COMB-001` shows this is not a complete failure of web mode.
+- The historical failure was caused by an empty final model output after the
+  previous output budget was consumed.
+- The backend now uses a larger output budget and converts empty final text into
+  a controlled degraded response.
+- The exact original question returns HTTP 200 with web sources.
+- Final evidence for the Chile demo query is stored in `13-web-final.png`.
 
 ## 10. Check That Sources Are Displayed
 
