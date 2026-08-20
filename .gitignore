@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .chainlit/
+.files/
 !frontend/.chainlit/
 frontend/.chainlit/*
 !frontend/.chainlit/config.toml
@@ -33,6 +34,7 @@ outputs/*
 .vscode/
 .DS_Store
 Thumbs.db
+~$*.pptx
 
 # txt 
 comandos.txt
