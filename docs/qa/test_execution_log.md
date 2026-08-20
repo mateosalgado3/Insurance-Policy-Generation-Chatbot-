@@ -34,7 +34,7 @@ This execution includes automated coverage for:
 - Abstention when no evidence is found.
 - Missing-index handling.
 
-## Manual Indexing And Readiness Validation
+## Historical Manual Indexing And Readiness Validation
 
 - Date: 2026-07-29
 - Branch: `feature/qa-integration-demo`
@@ -53,7 +53,9 @@ The indexing result confirms only that:
 - The `text-embedding-3-small` model was used.
 - The command completed without errors.
 
-This does not yet validate retrieval quality or answer quality manually.
+This historical indexing run predates the final reusable Docker snapshot, where
+`/ready` reports 262 indexed chunks. It does not define the final release corpus
+size and does not validate retrieval quality or answer quality manually.
 
 ### Readiness Before Indexing
 
@@ -236,7 +238,8 @@ Invoke-RestMethod `
 - Case ID: `FE-POL-001`
 - Flow: Chainlit frontend -> FastAPI -> Qdrant -> OpenAI -> Chainlit frontend
 - Status: Passed
-- Automated suite context: final suite passed with 74 tests and 2 non-blocking third-party warnings
+- Later automated suite context: the final release suite passed with 74 tests
+  and 2 non-blocking third-party warnings.
 
 Configuration validated from Chainlit with `/config`:
 
@@ -759,7 +762,7 @@ The run reported a Starlette/TestClient deprecation warning.
 - Blocking status: non-blocking
 - Action in this task: record only
 
-## Final Docker E2E Certification
+## Historical Docker E2E Certification
 
 - Date: 2026-08-18
 - Environment: clean Docker Compose rebuild using the release-candidate worktree
@@ -767,7 +770,8 @@ The run reported a Starlette/TestClient deprecation warning.
 - Frontend: healthy
 - Readiness: `ready`, OpenAI configured, Qdrant collection `queplan_policies`, 262 chunks
 - Automated suite: 74 passed; two third-party deprecation warnings; zero failures
-- Log scan: zero error, traceback, exception, timeout or rate-limit lines in the last 200 lines of both services
+- Limited log scan: zero error, traceback, exception, timeout or rate-limit
+  lines in the last 200 lines of both services for this historical run.
 
 Observed real-service flows:
 
@@ -798,7 +802,7 @@ is recorded as provider/network variability, not as a new benchmark or SLA. The
 versioned baseline remains the correct summary for the presentation because it
 uses more observations.
 
-## Daisy Substitute Sign-Off
+## Historical Daisy Substitute Sign-Off
 
 - Date: 2026-08-18
 - Owner: Mateo Salgado, replacing Daisy Llivisaca for final QA and presentation
@@ -808,7 +812,7 @@ uses more observations.
 - Browser: final home screen loaded with 262 chunks, route chips, configuration
   panel and policy filter visible
 - Controlled invalid request: HTTP 422
-- Docker log scan: zero matching error lines
+- Limited Docker log scan: zero matching error lines in the inspected window.
 
 Final real-service replay:
 
@@ -823,3 +827,160 @@ Final real-service replay:
 The web and draft timings demonstrate provider variability and are not used as
 an SLA. The offline backup question, filtered to `POL320190074`, remains the
 required fallback for the live presentation.
+
+## Historical/Superseded Docker Replay From Previous Image
+
+- Date: 2026-08-19
+- Validated commit: `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`
+- Short commit: `369dbc3`
+- Commit message: `Document Daisy QA handoff and final replay`
+- Environment: Docker Compose using the latest project version at the exact
+  commit above
+- API container: healthy
+- Frontend container: healthy
+- `GET /health`: HTTP 200, `status: healthy`, version `0.3.0`
+  from a previous Docker image
+- `GET /ready`: HTTP 200
+- Readiness fields: `openai_configured: true`, `index_ready: true`,
+  `collection: queplan_policies`, `indexed_chunks: 262`
+- Historical status: passed for the previous Docker image, then superseded by
+  the later clean Docker rebuild that validated API version `0.5.0`.
+- Scope note: this replay is retained only to explain the temporary `0.3.0`
+  observation. Detailed final release flow evidence is recorded once in
+  `Final Release QA - 2026-08-19/20`.
+
+Conclusion:
+
+- This replay passed against commit `369dbc3`, but it is not the final Docker
+  build evidence because it used a previous image that reported API `0.3.0`.
+- The later clean Docker rebuild replay supersedes the `0.3.0` image-version
+  observation and validates the final build as API version `0.5.0`.
+- No blocking issue was found.
+- No new QA requirement or pending QA task was created by this replay.
+
+## Final Release QA - 2026-08-19/20
+
+- Date: 2026-08-19/20
+- Validated commit: `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`
+- Short commit: `369dbc3`
+- Commit message: `Document Daisy QA handoff and final replay`
+- Validated build: clean Docker image rebuild from scratch for final API
+  version `0.5.0`.
+- Rebuild result: Docker images rebuilt cleanly and the project was started
+  again.
+- `GET /health`: `healthy`, service `Insurance Policy RAG API`, version
+  `0.5.0`.
+- `GET /ready`: previously confirmed `ready`, OpenAI configured, index
+  available, collection `queplan_policies`, and `262` indexed chunks.
+- Docker containers: API healthy; frontend healthy.
+- Blocking defects: none found.
+
+Clarification:
+
+- Earlier QA evidence that recorded API version `0.3.0` came from a previous
+  Docker image. After the clean rebuild, the validated final Docker build is
+  API version `0.5.0`.
+
+### Final E2E Replay On Docker Build `0.5.0`
+
+Conversational Chainlit flows used `POST /ask/stream`. Draft generation used
+`POST /generate-policy`.
+
+| Flow | Input | Result | Evidence | Total |
+|---|---|---|---|---:|
+| Policies | Policy `POL320190074`; `¿Qué es el período de carencia y desde cuándo se cuenta?` | Passed | Correct policy sources displayed. Offline backup question validated. | 8.3 s |
+| Web | `¿Cuáles son las tendencias actuales en inteligencia artificial aplicada al sector de seguros?` | Passed | Current web sources displayed. | 8.2 s |
+| Combined / Pólizas + web | Policy `POL320190074`; compare catastrophic coverage with current sector information. | Passed | Documentary evidence plus current web evidence displayed. | 7.7 s |
+| Draft | `POL320200071,POL320150503`; combine hospitalization clauses and identify information requiring human definition. | Passed | Uses both policies, includes sources and legal/actuarial/compliance review warning. | 17.7 s |
+
+Final automated suite and evaluation replay details are recorded in the
+subsections below.
+
+Conclusion:
+
+- The clean Docker rebuild replay validates the final deliverable build as
+  API version `0.5.0`.
+- The offline backup question is validated correctly with `POL320190074`.
+- Presentation baselines remain distinct from the variable final QA replay
+  metrics.
+- No new QA requirement or pending QA task was created by this replay.
+
+### Automated Suite
+
+- Date: 2026-08-19
+- Validated commit: `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`
+- Command: `python -m pytest -q`
+- Result: Passed
+- Summary: `74 passed, 2 warnings in 37.38s`
+- Functional failures: none
+
+Warnings recorded:
+
+- Starlette/httpx deprecation warning.
+- Pydantic class-based config deprecation warning.
+
+Conclusion:
+
+- The automated suite passed on the validated commit.
+- The two warnings are dependency/deprecation warnings and are not functional
+  test failures.
+- No new QA requirement or pending QA task was created by this execution record.
+
+### Final Evaluation Replay
+
+- Date: 2026-08-19
+- Validated commit: `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`
+- Scope: final QA replay of retrieval, RAGAS and latency metrics used in the
+  presentation.
+- Status: Passed
+
+#### Retrieval
+
+- Command: `python scripts/evaluate_retrieval.py --provider openai --top-k 5`
+- Total questions: 52
+- Labeled questions: 43
+- Hit@5: `1.0000`
+- Recall@5: `0.9341`
+- MRR: `0.8078`
+- Result: matches the documented presentation baseline.
+
+#### RAGAS
+
+- Command: `python scripts/evaluate_ragas.py --health-threshold 0.60 --limit 12`
+- Cases: 12
+- Answer relevancy mean: `0.7078`
+- Context relevance mean: `0.9792`
+- Overall mean: `0.8435`
+- Healthy: `true`
+- Result: small expected variation from the LLM-based baseline; no regression
+  identified.
+
+#### Latency
+
+- Command: `python scripts/evaluate_latency.py --limit 12`
+- Cases: 12
+- Mean time to model: `326.93 ms`
+- Mean model response: `4889.07 ms`
+- Mean backend total: `5216.01 ms`
+- Backend total p95: `8392.25 ms`
+- Result: latency variation is observational and environment-sensitive, not a
+  functional failure.
+
+#### Presentation Baselines
+
+These are reference metrics used in the final presentation, not another QA
+execution date. They must remain distinct from the final replay values above.
+
+- Retrieval baseline: matched exactly by the final replay.
+- RAGAS baseline: Answer `0.7053`, Context `0.9792`, Overall `0.8422`.
+- Latency baseline: time to model `475.06 ms`, model response `4411.09 ms`,
+  backend total `4886.15 ms`.
+
+Conclusion:
+
+- Retrieval reproduced the documented presentation metrics exactly.
+- RAGAS remained healthy and within expected LLM-evaluation variation compared
+  with the stored presentation baseline.
+- Latency remained a non-SLA observational benchmark; variation was not treated
+  as a blocker.
+- No new QA requirement or pending QA task was created by this evaluation replay.

@@ -1,16 +1,28 @@
 # Known Issues
 
+## Active Non-Blocking Items
+
 ## Starlette/TestClient Deprecation Warning
 
 - Impact: low
 - Status: non-blocking
-- Notes: recorded during the test execution. No dependency or package changes are proposed in this task.
+- Notes: recorded during the latest automated test execution as a dependency/deprecation warning. No dependency or package changes are proposed in this task.
 
-## Possible Documentation And Runtime Misalignment
+## Pydantic Class-Based Config Deprecation Warning
+
+- Impact: low
+- Status: non-blocking
+- Notes: recorded during the latest automated test execution as a dependency/deprecation warning. It did not cause any functional test failure.
+
+## Resolved Historical Issues
+
+## Resolved Docker Version Mismatch
 
 - Impact: medium
-- Status: optional future documentation cleanup
-- Notes: repository documentation, `/config`, and the current implementation appear partially misaligned. This task records the issue only and does not correct it.
+- Status: resolved
+- Notes: earlier QA evidence showed API `0.3.0` because an older Docker image
+  was running. After a clean rebuild, final QA validated API `0.5.0`. No
+  runtime defect remains from this mismatch.
 
 ## Swagger Example Does Not Match The Actual `/health` Response
 
@@ -45,6 +57,8 @@
 - Status: resolved
 - Resolution: added the Spanish welcome document and theme-specific logo assets expected by Chainlit.
 
+## Accepted Non-Blocking Limitation
+
 ## UX Observation - Draft Citation Labels
 
 - Type: UX improvement
@@ -55,6 +69,7 @@
 
 ## Final release status
 
-No open blocking defect remains as of the 2026-08-18 release-candidate run.
+No open blocking defect remains as of the 2026-08-19 clean Docker rebuild and
+final release replay on commit `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`.
 The remaining items in this document are low-impact dependency warnings or
 accepted presentation/UX limitations.

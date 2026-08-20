@@ -15,6 +15,25 @@
 | Streaming Frontend | Validated |
 | Documented Functional Observations | No open blocker |
 
+## Final Release Validation
+
+- Date: 2026-08-19/20
+- Validated commit: `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`
+- Final Docker build: API `0.5.0`
+- API and frontend containers healthy.
+- `GET /health`: healthy, service `Insurance Policy RAG API`, API `0.5.0`.
+- `GET /ready`: ready, OpenAI configured, collection `queplan_policies`, 262 indexed chunks.
+- Final E2E replay: policies, web, combined, and draft passed. Conversational
+  flows used `POST /ask/stream`; draft generation used `POST /generate-policy`.
+- Official offline backup question validated: `¿Qué es el período de carencia y desde cuándo se cuenta?` with policy `POL320190074`.
+- Automated suite: 74 passed, 2 dependency/deprecation warnings.
+- Retrieval matched the presentation baseline.
+- RAGAS remained healthy.
+- Latency replay showed expected environment-sensitive variation.
+- Blocking defects: none.
+
+Detailed execution evidence is recorded in docs/qa/test_execution_log.md.
+
 ## Available
 
 - FastAPI application.
@@ -37,7 +56,7 @@
 - Automated coverage for abstention when no evidence is found.
 - Automated coverage for missing-index handling.
 
-## Manually Validated After Local Indexing
+## Historical Manual Indexing Validation
 
 - OpenAI configuration was detected by `GET /ready`.
 - The Qdrant collection `queplan_policies` was created or updated by `python -m insurance_chatbot.indexing`.
@@ -46,9 +65,11 @@
 - The readiness state changed from `not_ready` before indexing to `ready` after indexing.
 - The index reported 487 chunks from 9 documents using `text-embedding-3-small`.
 
-This manual validation confirms index creation and readiness only. It does not yet validate retrieval quality, answer quality, or citation correctness.
+This historical manual validation confirms index creation and readiness only.
+It predates the final reusable snapshot, where `/ready` reports 262 indexed
+chunks. It does not define the final release corpus size.
 
-## Manually Validated Functional `/ask` Path
+## Previous QA - Manually Validated Functional `/ask` Path
 
 - FastAPI to Qdrant to OpenAI to response flow worked for the first Swagger `/ask` case.
 - Retrieval returned 5 chunks.
@@ -63,7 +84,7 @@ This manual validation confirms index creation and readiness only. It does not y
 - Malformed JSON for `/ask` returned HTTP 422 with `json_invalid` before endpoint logic.
 - Invalid `Content-Type: text/plain` for `/ask` returned HTTP 422 with `model_attributes_type` before endpoint execution.
 
-## Manually Validated Grounding For First `/ask` Case
+## Previous QA - Manually Validated Grounding For First `/ask` Case
 
 - Grounding of the first `/ask` answer against `POL320190074.pdf` was manually validated.
 - The main answer claims matched the cited pages.
@@ -72,7 +93,7 @@ This manual validation confirms index creation and readiness only. It does not y
 - Page 35 was confirmed as additional context rather than direct support for every listed coverage.
 - The first complete end-to-end flow is manually validated: FastAPI to Qdrant to OpenAI to cited answer to PDF page review.
 
-## Manually Validated Frontend Smoke Test
+## Previous QA - Manually Validated Frontend Smoke Test
 
 - Chainlit frontend is available.
 - Frontend to API connection was validated.
@@ -115,12 +136,9 @@ Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
 
 ## Frontend Web Flow Status
 
-- `FE-WEB-001` was reproduced and its root cause was corrected.
-- The exact original query now returns HTTP 200 with web sources.
-- Empty model output is handled as a degraded response instead of HTTP 500.
-- `FE-WEB-002` confirmed that a general web query can execute successfully.
-- `FE-COMB-001` confirmed that web retrieval can also execute successfully inside the `combined` flow.
-- Integration of the web route is validated.
+- `FE-WEB-001` is historical and resolved: the original web-route failure was
+  corrected, empty model output is handled without HTTP 500, and web retrieval
+  is validated in explicit `web` and `combined` flows.
 
 ## Streaming Frontend Validation
 
@@ -131,7 +149,7 @@ Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
 - The browser E2E check for `POL320190074` returned five sources and every source belonged to that policy.
 - `/ready` returns the RAG state without being sent through the LLM router.
 
-## Manually Validated Combined Flow
+## Previous QA - Manually Validated Combined Flow
 
 - `combined` mode was validated from Chainlit.
 - The response displayed route `combined`.
@@ -142,7 +160,7 @@ Manual QA execution screenshots are stored in `docs/qa/screenshots/`.
 - Web sources included domains such as `supercias.gob.ec` and `undp.org`.
 - No HTTP 500 occurred in `FE-COMB-001`.
 
-## Manually Validated Draft Generation
+## Previous QA - Manually Validated Draft Generation
 
 - Draft generation: Validated.
 - `/draft` command validation works.
@@ -174,9 +192,8 @@ The normal application path uses real services. The `policies` route uses `RealR
 - All planned manual QA scenarios for the documented project scope were completed.
 - The QA evidence package is finalized in `docs/qa/screenshots/`.
 - The demo runbook is finalized in `docs/qa/demo_runbook.md`.
-- Recommended demo questions are documented. `FE-WEB-001` is resolved; the live demo uses the more relevant Chile insurance-regulation query.
-
-## Optional Future Improvements
-
-- Source-format alignment between API `list[str]` responses and richer source descriptions in architecture documentation.
-- Second-person runbook validation as a handoff improvement, if requested later.
+- Recommended demo questions are documented. The final replay records the
+  official offline backup question: `¿Qué es el período de carencia y desde
+  cuándo se cuenta?`, in `policies` mode with `POL320190074`.
+- `FE-WEB-001` remains resolved as historical QA evidence; the final replay
+  validated the current web demo flow with current web sources and URLs.

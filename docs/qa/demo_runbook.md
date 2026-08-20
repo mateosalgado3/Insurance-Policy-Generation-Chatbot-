@@ -64,7 +64,7 @@ Expected high-level result:
 - `/ready` reports the indexed chunk count from the current local snapshot.
 - `/config` returns the current model, embedding, vector store, collection, and mode configuration.
 
-`docs/demo.md` currently records the expected snapshot readiness as `indexed_chunks=262`. Older QA evidence recorded a local manual indexing run with 487 chunks. For the current demo flow, use the value reported by `/ready` and document any mismatch before presenting.
+`docs/demo.md` records the final expected snapshot readiness as `indexed_chunks=262`. Older QA evidence recorded a local manual indexing run with 487 chunks; that value is historical and does not define the final release corpus size.
 
 ## 5. Open Swagger
 
@@ -128,7 +128,11 @@ To clear the policy filter:
 /policy clear
 ```
 
-## 8. Validated Candidate Demo Questions
+## 8. Previous QA / Historical Demo Candidates
+
+The cases in this section are retained as useful historical QA evidence. The
+current final 0.5.0 live-demo flow is documented in
+[Final Release Demo Questions](#12-final-release-demo-questions---2026-08-1920).
 
 ### Policies Candidate
 
@@ -224,7 +228,7 @@ Expected checks:
 - The assistant answers that Argentina won the 2022 FIFA World Cup.
 - The question is treated as general knowledge rather than a policy-corpus query.
 
-This validates routing behavior. It is not yet marked as part of the final demo question list.
+This validates historical routing behavior and is not part of the final 0.5.0 live-demo question list.
 
 ### Policies No-Evidence Candidate
 
@@ -243,7 +247,7 @@ Expected checks:
 - The assistant explains that the available evidence is insufficient to determine whether such coverage exists.
 - Retrieved policy sources are cited.
 
-This validates no-evidence behavior in policies mode. It is not yet marked as part of the final demo question list.
+This validates historical no-evidence behavior in policies mode and is not part of the final 0.5.0 live-demo question list.
 
 ### Out-Of-Scope Candidate
 
@@ -261,7 +265,7 @@ Expected checks:
 - The assistant declines to generate the poem based on unsupported evidence.
 - Retrieved policy sources are cited.
 
-This validates out-of-scope behavior in policies mode. It is not yet marked as part of the final demo question list.
+This validates historical out-of-scope behavior in policies mode and is not part of the final 0.5.0 live-demo question list.
 
 ### Draft Candidate
 
@@ -339,7 +343,11 @@ docs/qa/screenshots/
 
 Do not include `.env` values or API keys in screenshots.
 
-## 12. Recommended Demo Questions
+## 12. Final Release Demo Questions - 2026-08-19/20
+
+These are the final 0.5.0 demo questions validated after the clean Docker
+rebuild. Older candidates above remain useful as regression evidence but should
+not be treated as the current release script.
 
 ### Demo 1 - Policies Mode
 
@@ -353,7 +361,7 @@ Commands:
 Question:
 
 ```text
-What medical expenses does this policy cover?
+¿Qué es el período de carencia y desde cuándo se cuenta?
 ```
 
 Purpose:
@@ -362,76 +370,76 @@ Purpose:
 - Demonstrate grounded answers.
 - Demonstrate retrieved sources.
 - Show route `policies`.
+- Validate the official offline backup question with `POL320190074`.
 
-### Demo 2 - No Evidence
-
-Question:
-
-```text
-Does this policy cover damages caused by a spacecraft collision?
-```
-
-Purpose:
-
-- Demonstrate non-hallucination.
-- Show that the assistant reports insufficient evidence.
-- Demonstrate source attribution.
-
-### Demo 3 - Automatic Routing
+### Demo 2 - Web Mode
 
 Command:
 
 ```text
-/mode auto
+/mode web
 ```
 
 Question:
 
 ```text
-Who won the FIFA World Cup in 2022?
+¿Cuáles son las tendencias actuales en inteligencia artificial aplicada al sector de seguros?
 ```
 
 Purpose:
 
-- Demonstrate automatic routing.
-- Demonstrate route `web`.
-- Show handling of general knowledge questions.
+- Demonstrate current web search.
+- Show route `web`.
+- Show current web sources with URLs.
 
-### Demo 4 - Out-Of-Scope Request
+### Demo 3 - Combined Mode
 
 Command:
 
 ```text
-/mode policies
+/mode combined
+/policy POL320190074
 ```
 
 Question:
 
 ```text
-Write a short poem about the ocean.
+Compara la cobertura catastrófica de la póliza con información actual del sector asegurador.
 ```
 
 Purpose:
 
-- Demonstrate safe handling of unsupported requests.
-- Show that the assistant does not fabricate content outside the retrieved evidence.
-- Demonstrate route `policies`.
+- Demonstrate policy and web evidence in one response.
+- Show route `combined`.
+- Confirm policy evidence and current web information remain separated.
 
-## 13. Recommended Demo Flow
+### Demo 4 - Draft Generation
+
+Command:
+
+```text
+/draft POL320200071,POL320150503 | Combine the hospitalization coverage clauses and identify the information that requires human definition.
+```
+
+Purpose:
+
+- Demonstrate review-only policy drafting.
+- Confirm both source policies are used.
+- Confirm sources and legal/actuarial/compliance review warning are displayed.
+
+## 13. Final Release Demo Flow
 
 Recommended live presentation order:
 
 1. Start Chainlit.
 2. Switch to policies mode.
 3. Select policy `POL320190074`.
-4. Ask the medical expenses question.
+4. Ask the official offline backup question.
 5. Show the retrieved sources.
-6. Ask the spacecraft collision question.
-7. Switch to auto mode.
-8. Ask the FIFA World Cup question.
-9. Switch back to policies mode.
-10. Ask the poem question.
-11. Conclude by mentioning that API unreachable and timeout scenarios were validated during QA and are documented in the QA evidence package, without reproducing them live.
+6. Switch to web mode and ask the current AI-in-insurance trends question.
+7. Switch to combined mode, keep policy `POL320190074`, and ask the catastrophic-coverage comparison question.
+8. Run the draft command with `POL320200071,POL320150503`.
+9. Conclude by mentioning that API unreachable, timeout, no-evidence, auto-routing, and out-of-scope scenarios were validated during historical QA and are documented in the QA evidence package, without reproducing them live.
 
 Presenter notes:
 
