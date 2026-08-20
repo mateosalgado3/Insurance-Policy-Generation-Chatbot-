@@ -984,3 +984,28 @@ Conclusion:
 - Latency remained a non-SLA observational benchmark; variation was not treated
   as a blocker.
 - No new QA requirement or pending QA task was created by this evaluation replay.
+
+## Post-Integration Automated Report - 2026-08-20
+
+- Tested source commit: `01f4e26`
+- Scope: Daisy's final QA documentation integrated with the consolidated
+  automated evaluation runner.
+- Command: `uv run python scripts/run_all_checks.py --limit 2`
+- Generated report: `docs/evaluation-results.md`
+- Overall status: passed.
+- Ruff: passed.
+- Pytest: 77 passed; zero functional failures.
+- Local retrieval, 52 cases: Hit Rate@5 `0.6279`, Recall@5 `0.5930`, MRR `0.3981`.
+- OpenAI retrieval, 52 cases: Hit Rate@5 `1.0000`, Recall@5 `0.9341`, MRR `0.8078`.
+- RAGAS smoke, 2 cases: Answer Relevancy `0.7922`, Context Relevance `1.0000`, Overall `0.8961`, healthy at threshold `0.60`.
+- Latency smoke, 2 cases: time-to-model mean `517.08 ms`, model-response mean
+  `6861.03 ms`, backend-total mean `7378.12 ms`.
+
+Interpretation:
+
+- The 77-test result supersedes the automated test count only because three
+  tests were added for the consolidated report generator.
+- Daisy's 12-case final RAGAS and latency replay remains the stronger release
+  evidence. The two-case run only verifies that the newly integrated runner
+  executes every evaluation family and regenerates the Markdown correctly.
+- No presentation baseline was overwritten and no blocking defect was found.

@@ -22,6 +22,10 @@ Legend:
   checks are retained only for traceability.
 - **Presentation Baselines:** RAGAS and latency slide metrics remain separate
   from variable final replay metrics; retrieval matched its baseline exactly.
+- **Post-integration automation - 2026-08-20:** Daisy's QA commit and the
+  consolidated report runner were combined and validated with 77 tests plus a
+  two-case paid smoke. This is an integration check, not a replacement for the
+  12-case final replay.
 
 ## Environment Preparation
 
@@ -32,6 +36,7 @@ Legend:
 - [x] Completed - Docker Compose startup commands are documented in `README.md` and `docs/demo.md`.
 - [x] Completed - The QA demo runbook is finalized for the documented project scope.
 - [x] Final Release QA - Final Docker E2E replay was recorded against exact commit `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d`.
+- [x] Post-integration - `scripts/run_all_checks.py --limit 2` passed Ruff, 77 Pytest tests, local/OpenAI retrieval, RAGAS, and latency; it replaced `docs/evaluation-results.md` with the current evidence.
 
 ## Git And Sensitive Files
 

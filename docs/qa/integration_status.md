@@ -34,6 +34,24 @@
 
 Detailed execution evidence is recorded in docs/qa/test_execution_log.md.
 
+## Post-Integration Automation
+
+- Date: 2026-08-20
+- Tested source commit: `01f4e26`
+- Daisy's QA documentation is integrated on `main`.
+- Consolidated runner: `scripts/run_all_checks.py`.
+- Ruff: passed.
+- Pytest: 77 passed, zero functional failures.
+- OpenAI retrieval on 52 cases: Hit Rate@5 `1.0000`, Recall@5 `0.9341`, MRR `0.8078`.
+- Two-case RAGAS smoke: Answer Relevancy `0.7922`, Context Relevance `1.0000`, healthy at the internal `0.60` threshold.
+- Two-case latency smoke: backend mean `7378.12 ms`; observational only.
+- Generated report: `docs/evaluation-results.md`.
+- Blocking defects: none.
+
+The two-case smoke validates the integration and report generator. Daisy's
+12-case final replay remains the stronger release evidence and the versioned
+presentation baselines remain unchanged.
+
 ## Available
 
 - FastAPI application.

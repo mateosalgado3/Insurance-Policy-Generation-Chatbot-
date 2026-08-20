@@ -8,6 +8,11 @@ The documents are intended to help another person understand what has been verif
 
 - **Previous QA:** earlier manual, API, frontend, negative-path, resilience, and exploratory validation. These entries keep their original execution dates and are not presented as rerun during the final release session.
 - **Final Release QA - 2026-08-19/20:** final validation for commit `369dbc3aaf23cf15d8ede4d83538e16b4b1a571d` and clean Docker build API `0.5.0`. This includes the final Docker/E2E replay, 74-test automated suite, final evaluation replay, 262 indexed chunks, and no blocking defects.
+- **Post-integration automation - 2026-08-20:** Daisy's final QA commit was
+  integrated with the consolidated evaluation runner. The combined tree passed
+  Ruff, 77 Pytest tests, both retrieval providers, a two-case RAGAS smoke, and
+  a two-case latency smoke. This smoke confirms integration and does not replace
+  Daisy's 12-case final replay or the presentation baselines.
 - **Historical/Superseded Evidence:** traceability records that no longer represent the final release, including the earlier Docker image that reported API `0.3.0`, the older 487-chunk local index, older demo candidates, and earlier release-candidate checks.
 - **Presentation Baselines:** retrieval, RAGAS, and latency reference metrics used in the final slides. These are kept separate from the final replay metrics and should not be overwritten by variable replay results.
 
@@ -19,3 +24,4 @@ The documents are intended to help another person understand what has been verif
 - [Integration status](integration_status.md): concise current implementation status with a short final release summary.
 - [Demo runbook](demo_runbook.md): current final demo flow, with older demo candidates marked historical.
 - [Known issues](known_issues.md): active non-blocking warnings and resolved historical issues.
+- [Automated evaluation results](../evaluation-results.md): generated current-run summary for tests, retrieval, RAGAS, latency, and baseline deltas.
