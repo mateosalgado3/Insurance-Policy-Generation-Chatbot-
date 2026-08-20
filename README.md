@@ -217,6 +217,28 @@ hasta confirmar permisos de redistribución del dataset.
 
 ## Evaluación y calidad
 
+Para ejecutar toda la validación y sobrescribir un único reporte legible:
+
+```powershell
+uv sync --extra dev --extra eval
+uv run python scripts/run_all_checks.py
+```
+
+El comando ejecuta Ruff, toda la suite Pytest, retrieval local y OpenAI, RAGAS
+y latencia. Los JSON detallados quedan en `outputs/evaluation/` y el resumen
+consolidado se reemplaza en
+[`docs/evaluation-results.md`](docs/evaluation-results.md). La corrida completa
+usa OpenAI y puede generar consumo. Para comprobar localmente el código y el
+reporte sin llamadas pagadas:
+
+```powershell
+uv run python scripts/run_all_checks.py --skip-paid
+```
+
+Para una corrida real pequeña antes de la evaluación completa se puede usar
+`uv run python scripts/run_all_checks.py --limit 2`; el límite se aplica a RAGAS y
+latencia, mientras retrieval continúa evaluando el conjunto completo.
+
 ```powershell
 $env:MPLBACKEND="Agg"
 python -m ruff check src scripts frontend tests
